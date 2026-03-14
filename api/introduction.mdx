@@ -1,0 +1,192 @@
+---
+title: 'API Introduction'
+description: 'Overview of the Sift REST API for course data, recommendations, and student profiles'
+---
+
+## Overview
+
+The Sift API provides programmatic access to course data, personalized recommendations, professor information, degree plan tracking, transcript parsing, and user profile management for Texas A&M University.
+
+All endpoints follow RESTful conventions and return JSON responses with a consistent structure.
+
+## Base URL
+
+The API is hosted at:
+
+```
+https://api.sift.tamu.edu/api
+```
+
+For local development:
+
+```
+http://localhost:3001/api
+```
+
+<Note>
+  All API endpoints are prefixed with `/api`. For example, to fetch courses, you would call `/api/courses`.
+</Note>
+
+## Rate Limits
+
+The API implements two-tier rate limiting to ensure fair usage and protect server resources:
+
+### General API Limit
+
+- **Window**: 15 minutes
+- **Limit**: 300 requests per window
+- **Applies to**: All `/api/*` endpoints
+
+### Transcript Upload Limit
+
+Transcript parsing uses the Claude API and is rate-limited more strictly:
+
+- **Window**: 15 minutes  
+- **Limit**: 10 uploads per window
+- **Applies to**: `/api/transcript/parse`
+
+<Warning>
+  Rate limit headers are included in all API responses:
+  - `RateLimit-Limit`: Maximum requests allowed
+  - `RateLimit-Remaining`: Requests remaining in current window
+  - `RateLimit-Reset`: Timestamp when the window resets
+</Warning>
+
+When you exceed the rate limit, you'll receive a `429 Too Many Requests` response:
+
+```json
+{
+  "data": null,
+  "error": "Too many requests, please try again later"
+}
+```
+
+## Response Format
+
+All API responses follow a consistent envelope structure:
+
+### Success Response
+
+```json
+{
+  "data": { /* response payload */ },
+  "error": null
+}
+```
+
+### Error Response
+
+```json
+{
+  "data": null,
+  "error": "Error message describing what went wrong"
+}
+```
+
+<Note>
+  The `data` field contains the actual response payload on success, and is `null` on error. The `error` field contains an error message string on failure, and is `null` on success.
+</Note>
+
+## HTTP Status Codes
+
+The API uses standard HTTP status codes:
+
+<CardGroup cols={2}>
+  <Card title="200 OK" icon="check">
+    Request succeeded
+  </Card>
+  <Card title="400 Bad Request" icon="exclamation">
+    Invalid request parameters or body
+  </Card>
+  <Card title="401 Unauthorized" icon="lock">
+    Missing or invalid authentication token
+  </Card>
+  <Card title="404 Not Found" icon="magnifying-glass">
+    Resource not found
+  </Card>
+  <Card title="429 Too Many Requests" icon="gauge-high">
+    Rate limit exceeded
+  </Card>
+  <Card title="500 Internal Server Error" icon="triangle-exclamation">
+    Server error occurred
+  </Card>
+</CardGroup>
+
+## Error Handling
+
+When an error occurs, the API returns a descriptive error message in the `error` field. Common error scenarios:
+
+### Validation Errors
+
+```json
+{
+  "data": null,
+  "error": "Invalid request body"
+}
+```
+
+Returned when request parameters fail validation (e.g., missing required fields, invalid data types).
+
+### Authentication Errors
+
+```json
+{
+  "data": null,
+  "error": "Authentication required"
+}
+```
+
+Returned when accessing protected endpoints without a valid authentication token.
+
+### Resource Not Found
+
+```json
+{
+  "data": null,
+  "error": "Course not found"
+}
+```
+
+Returned when requesting a specific resource that doesn't exist.
+
+## Security
+
+The API implements multiple security measures:
+
+- **Helmet.js**: Security headers to prevent common web vulnerabilities
+- **CORS**: Cross-origin requests restricted to configured frontend URLs
+- **Request Size Limits**: JSON payloads capped at 256KB to prevent abuse
+- **Rate Limiting**: Prevents API abuse and ensures fair usage
+- **Clerk Authentication**: Secure user authentication for protected endpoints
+
+## Health Check
+
+A public health check endpoint is available to verify API status:
+
+```bash
+GET /health
+```
+
+Response:
+
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-03-14T12:34:56.789Z"
+}
+```
+
+<Note>
+  The health check endpoint does not require authentication and is not subject to rate limiting.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key" href="/api/authentication">
+    Learn how to authenticate API requests
+  </Card>
+  <Card title="Endpoints" icon="code" href="/api/courses">
+    Explore available API endpoints
+  </Card>
+</CardGroup>

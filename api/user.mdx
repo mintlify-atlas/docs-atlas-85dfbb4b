@@ -1,0 +1,466 @@
+---
+title: User Profile API
+description: Endpoints for managing user profiles, preferences, and course history
+---
+
+<Warning>
+  **Authentication required:** All user profile endpoints require a valid authentication token from Clerk. The authenticated user's Clerk ID is used to identify their profile.
+</Warning>
+
+## Get User Profile
+
+<div className="api-method">
+  <div className="api-method-badge get">GET</div>
+  <code>/api/user/profile</code>
+</div>
+
+Retrieve the authenticated user's profile. If the user doesn't have a profile yet, one is automatically created with default values (lazy provisioning).
+
+### Headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token from Clerk authentication
+</ParamField>
+
+### Response
+
+Returns the user's complete profile.
+
+<ResponseField name="data" type="UserProfile">
+  User profile object
+  
+  <Expandable title="UserProfile properties">
+    <ResponseField name="id" type="string">
+      User profile UUID
+    </ResponseField>
+    
+    <ResponseField name="clerk_id" type="string">
+      Clerk user identifier
+    </ResponseField>
+    
+    <ResponseField name="email" type="string">
+      User's email address
+    </ResponseField>
+    
+    <ResponseField name="major" type="string">
+      Current major (e.g., "CS"). Defaults to "CS" on profile creation.
+    </ResponseField>
+    
+    <ResponseField name="catalog_year" type="string">
+      Catalog year for degree requirements (e.g., "2024-2025"). Defaults to "2024-2025".
+    </ResponseField>
+    
+    <ResponseField name="completed_courses" type="string[]">
+      Array of completed course codes
+    </ResponseField>
+    
+    <ResponseField name="in_progress_courses" type="string[]">
+      Array of courses currently in progress
+    </ResponseField>
+    
+    <ResponseField name="preferences" type="UserPreferences">
+      User preferences for course recommendations (see schema below)
+    </ResponseField>
+    
+    <ResponseField name="semester" type="string | null">
+      Target semester for planning (e.g., "Fall 2026")
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="error" type="string | null">
+  Error message if request failed, otherwise null
+</ResponseField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl -X GET "https://api.sift.app/api/user/profile" \
+  -H "Authorization: Bearer YOUR_CLERK_TOKEN"
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.sift.app/api/user/profile', {
+  headers: {
+    'Authorization': 'Bearer YOUR_CLERK_TOKEN'
+  }
+});
+const { data, error } = await response.json();
+```
+
+```python Python
+import requests
+
+headers = {'Authorization': 'Bearer YOUR_CLERK_TOKEN'}
+response = requests.get(
+    'https://api.sift.app/api/user/profile',
+    headers=headers
+)
+result = response.json()
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "id": "user-123",
+    "clerk_id": "user_2abc123xyz",
+    "email": "student@tamu.edu",
+    "major": "CS",
+    "catalog_year": "2024-2025",
+    "completed_courses": ["CSCE 121", "MATH 151", "PHYS 206"],
+    "in_progress_courses": ["CSCE 221", "MATH 251"],
+    "preferences": {
+      "weight_gpa": 0.25,
+      "weight_professor": 0.20,
+      "weight_would_take_again": 0.15,
+      "weight_difficulty": 0.15,
+      "weight_requirement": 0.15,
+      "weight_schedule": 0.10,
+      "min_credits": 12,
+      "max_credits": 18,
+      "preferred_times": ["morning", "afternoon"],
+      "excluded_courses": []
+    },
+    "semester": "Fall 2026"
+  },
+  "error": null
+}
+```
+
+<Note>
+  **Auto-creation:** If this is the user's first API call, a profile is automatically created with `major: "CS"` and `catalog_year: "2024-2025"`. No separate signup endpoint is needed.
+</Note>
+
+---
+
+## Update User Profile
+
+<div className="api-method">
+  <div className="api-method-badge put">PUT</div>
+  <code>/api/user/profile</code>
+</div>
+
+Update the authenticated user's profile. Only provided fields are updated; omitted fields remain unchanged.
+
+### Headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token from Clerk authentication
+</ParamField>
+
+### Request Body
+
+All fields are optional. Only include fields you want to update.
+
+<ParamField body="major" type="string" optional>
+  Major code (e.g., "CPEN", "MATH")
+</ParamField>
+
+<ParamField body="catalog_year" type="string" optional>
+  Catalog year (e.g., "2023-2024")
+</ParamField>
+
+<ParamField body="completed_courses" type="string[]" optional>
+  Array of completed course codes. Replaces entire array.
+</ParamField>
+
+<ParamField body="in_progress_courses" type="string[]" optional>
+  Array of in-progress course codes. Replaces entire array.
+</ParamField>
+
+<ParamField body="preferences" type="object" optional>
+  User preferences object. Can include any subset of preference fields (see UserPreferences schema).
+</ParamField>
+
+<ParamField body="semester" type="string" optional>
+  Target semester for planning
+</ParamField>
+
+### Response
+
+Returns the updated user profile.
+
+<ResponseField name="data" type="UserProfile">
+  Updated user profile object (same schema as GET /profile)
+</ResponseField>
+
+<ResponseField name="error" type="string | null">
+  Error message if request failed, otherwise null
+</ResponseField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl -X PUT "https://api.sift.app/api/user/profile" \
+  -H "Authorization: Bearer YOUR_CLERK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "major": "CPEN",
+    "completed_courses": ["CSCE 121", "MATH 151", "PHYS 206", "CSCE 221"],
+    "preferences": {
+      "weight_gpa": 0.35,
+      "min_credits": 15
+    }
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.sift.app/api/user/profile', {
+  method: 'PUT',
+  headers: {
+    'Authorization': 'Bearer YOUR_CLERK_TOKEN',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    major: 'CPEN',
+    completed_courses: ['CSCE 121', 'MATH 151', 'PHYS 206', 'CSCE 221'],
+    preferences: {
+      weight_gpa: 0.35,
+      min_credits: 15
+    }
+  })
+});
+const { data, error } = await response.json();
+```
+
+```python Python
+import requests
+
+headers = {
+    'Authorization': 'Bearer YOUR_CLERK_TOKEN',
+    'Content-Type': 'application/json'
+}
+response = requests.put(
+    'https://api.sift.app/api/user/profile',
+    headers=headers,
+    json={
+        'major': 'CPEN',
+        'completed_courses': ['CSCE 121', 'MATH 151', 'PHYS 206', 'CSCE 221'],
+        'preferences': {
+            'weight_gpa': 0.35,
+            'min_credits': 15
+        }
+    }
+)
+result = response.json()
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "id": "user-123",
+    "clerk_id": "user_2abc123xyz",
+    "email": "student@tamu.edu",
+    "major": "CPEN",
+    "catalog_year": "2024-2025",
+    "completed_courses": ["CSCE 121", "MATH 151", "PHYS 206", "CSCE 221"],
+    "in_progress_courses": ["MATH 251"],
+    "preferences": {
+      "weight_gpa": 0.35,
+      "weight_professor": 0.20,
+      "weight_would_take_again": 0.15,
+      "weight_difficulty": 0.15,
+      "weight_requirement": 0.15,
+      "weight_schedule": 0.10,
+      "min_credits": 15,
+      "max_credits": 18,
+      "preferred_times": ["morning", "afternoon"],
+      "excluded_courses": []
+    },
+    "semester": "Fall 2026",
+    "updated_at": "2026-03-14T10:30:00Z"
+  },
+  "error": null
+}
+```
+
+<Note>
+  **Partial updates:** You can update individual preference fields without providing the entire preferences object. Fields not included in the request remain unchanged.
+</Note>
+
+---
+
+## Migrate Profile Data
+
+<div className="api-method">
+  <div className="api-method-badge post">POST</div>
+  <code>/api/user/profile/migrate</code>
+</div>
+
+One-time migration endpoint for moving user data from localStorage to the database. This is useful when users transition from using Sift without an account to creating an authenticated account.
+
+**Behavior:**
+- If the user's profile already has data (completed courses or in-progress courses), the migration is skipped and the existing profile is returned.
+- If the profile is empty, the provided data is merged into the profile.
+
+### Headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token from Clerk authentication
+</ParamField>
+
+### Request Body
+
+<ParamField body="completed_courses" type="string[]" optional>
+  Completed courses from localStorage
+</ParamField>
+
+<ParamField body="in_progress_courses" type="string[]" optional>
+  In-progress courses from localStorage
+</ParamField>
+
+<ParamField body="preferences" type="object" optional>
+  User preferences from localStorage
+</ParamField>
+
+<ParamField body="semester" type="string" optional>
+  Target semester from localStorage
+</ParamField>
+
+### Response
+
+Returns the user profile after migration (or existing profile if migration was skipped).
+
+<ResponseField name="data" type="UserProfile">
+  User profile object after migration
+</ResponseField>
+
+<ResponseField name="error" type="string | null">
+  Error message if request failed, otherwise null
+</ResponseField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl -X POST "https://api.sift.app/api/user/profile/migrate" \
+  -H "Authorization: Bearer YOUR_CLERK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "completed_courses": ["CSCE 121", "MATH 151"],
+    "in_progress_courses": ["CSCE 221"],
+    "preferences": {
+      "weight_gpa": 0.30
+    },
+    "semester": "Fall 2026"
+  }'
+```
+
+```javascript JavaScript
+// Client-side migration logic
+const localData = {
+  completed_courses: JSON.parse(localStorage.getItem('completed_courses') || '[]'),
+  in_progress_courses: JSON.parse(localStorage.getItem('in_progress_courses') || '[]'),
+  preferences: JSON.parse(localStorage.getItem('preferences') || '{}'),
+  semester: localStorage.getItem('semester')
+};
+
+const response = await fetch('https://api.sift.app/api/user/profile/migrate', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer YOUR_CLERK_TOKEN',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify(localData)
+});
+const { data, error } = await response.json();
+
+// Clear localStorage after successful migration
+if (!error) {
+  localStorage.removeItem('completed_courses');
+  localStorage.removeItem('in_progress_courses');
+  localStorage.removeItem('preferences');
+  localStorage.removeItem('semester');
+}
+```
+
+```python Python
+import requests
+
+headers = {
+    'Authorization': 'Bearer YOUR_CLERK_TOKEN',
+    'Content-Type': 'application/json'
+}
+response = requests.post(
+    'https://api.sift.app/api/user/profile/migrate',
+    headers=headers,
+    json={
+        'completed_courses': ['CSCE 121', 'MATH 151'],
+        'in_progress_courses': ['CSCE 221'],
+        'preferences': {'weight_gpa': 0.30},
+        'semester': 'Fall 2026'
+    }
+)
+result = response.json()
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "id": "user-123",
+    "clerk_id": "user_2abc123xyz",
+    "email": "student@tamu.edu",
+    "major": "CS",
+    "catalog_year": "2024-2025",
+    "completed_courses": ["CSCE 121", "MATH 151"],
+    "in_progress_courses": ["CSCE 221"],
+    "preferences": {
+      "weight_gpa": 0.30,
+      "weight_professor": 0.20,
+      "weight_would_take_again": 0.15,
+      "weight_difficulty": 0.15,
+      "weight_requirement": 0.15,
+      "weight_schedule": 0.10,
+      "min_credits": 12,
+      "max_credits": 18,
+      "preferred_times": ["morning", "afternoon"],
+      "excluded_courses": []
+    },
+    "semester": "Fall 2026",
+    "updated_at": "2026-03-14T10:30:00Z"
+  },
+  "error": null
+}
+```
+
+<Note>
+  **One-time operation:** This endpoint is designed to be called once when a user first signs in. If the profile already has data, the migration is safely skipped to prevent overwriting user data.
+</Note>
+
+<Warning>
+  Returns 404 if the user profile doesn't exist. Call GET /profile first to auto-create the profile if needed.
+</Warning>
+
+---
+
+## UserPreferences Schema
+
+The `preferences` object supports the following fields:
+
+```typescript
+interface UserPreferences {
+  weight_gpa: number;              // 0-1, default: 0.25
+  weight_professor: number;        // 0-1, default: 0.20
+  weight_would_take_again: number; // 0-1, default: 0.15
+  weight_difficulty: number;       // 0-1, default: 0.15
+  weight_requirement: number;      // 0-1, default: 0.15
+  weight_schedule: number;         // 0-1, default: 0.10
+  min_credits: number;             // default: 12
+  max_credits: number;             // default: 18
+  preferred_times: ("morning" | "afternoon" | "evening")[]; // default: ["morning", "afternoon"]
+  excluded_courses: string[];      // default: []
+}
+```
+
+These preferences are used by the Recommendations API to personalize course suggestions.

@@ -1,0 +1,449 @@
+---
+title: Local Development Setup
+description: Set up Sift locally for development and contributions
+---
+
+This guide covers how to set up Sift on your local machine for development. You'll install dependencies, configure environment variables, populate the database with real course data, and run the dev servers.
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+- **Node.js 20+** installed
+- A **Supabase** project (free tier is fine)
+- An **Anthropic API key** for transcript parsing (get one at [console.anthropic.com](https://console.anthropic.com))
+- A **Clerk** account for authentication (get one at [clerk.com](https://clerk.com))
+- Git installed
+
+## Step 1: Clone the Repository
+
+```bash
+git clone https://github.com/your-org/sift.git
+cd sift
+```
+
+## Step 2: Install Dependencies
+
+Sift uses a monorepo structure with separate client and server packages.
+
+```bash
+# Install root dependencies (concurrently for running both servers)
+npm install
+
+# Install client dependencies
+cd client && npm install
+
+# Install server dependencies
+cd ../server && npm install
+```
+
+From package.json:2-15
+
+## Step 3: Configure Environment Variables
+
+You'll need to create environment files for both the client and server.
+
+### Client Environment
+
+Create `client/.env.local`:
+
+```bash
+NEXT_PUBLIC_API_URL=http://localhost:3001
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=<your-clerk-publishable-key>
+CLERK_SECRET_KEY=<your-clerk-secret-key>
+```
+
+<Note>
+Get your Clerk keys from the [Clerk Dashboard](https://dashboard.clerk.com). Create a new application if you haven't already.
+</Note>
+
+### Server Environment
+
+Create `server/.env`:
+
+```bash
+PORT=3001
+FRONTEND_URL=http://localhost:3000
+SUPABASE_URL=<your-supabase-url>
+SUPABASE_ANON_KEY=<your-supabase-anon-key>
+ANTHROPIC_API_KEY=<your-anthropic-api-key>
+CLERK_PUBLISHABLE_KEY=<your-clerk-publishable-key>
+CLERK_SECRET_KEY=<your-clerk-secret-key>
+```
+
+<Warning>
+**Never commit `.env` or `.env.local` files to version control.** These files contain sensitive credentials.
+</Warning>
+
+### Getting Your Keys
+
+<Steps>
+  <Step title="Supabase">
+    1. Create a project at [supabase.com](https://supabase.com)
+    2. Navigate to **Settings → API**
+    3. Copy the **Project URL** and **anon public key**
+  </Step>
+  <Step title="Anthropic">
+    1. Sign up at [console.anthropic.com](https://console.anthropic.com)
+    2. Navigate to **API Keys**
+    3. Create a new key and copy it
+    
+    <Note>
+    Transcript parsing uses Claude Haiku, which costs ~$0.001 per transcript. Budget accordingly.
+    </Note>
+  </Step>
+  <Step title="Clerk">
+    1. Create an application at [clerk.com](https://clerk.com)
+    2. Copy the **Publishable Key** and **Secret Key** from the dashboard
+    3. Configure allowed redirect URLs:
+       - `http://localhost:3000`
+       - Your production domain (if deploying)
+  </Step>
+</Steps>
+
+From README.md:31-45
+
+## Step 4: Set Up the Database
+
+### Create Tables
+
+Sift uses the following database schema:
+
+- `courses` — course metadata (department, number, name, credits, prerequisites)
+- `professors` — professor data (name, RMP ratings, difficulty, tags)
+- `grade_distributions` — historical grade data by course, professor, and semester
+- `sections` — current semester sections (professor, time slot, enrollment)
+- `degree_plans` — degree requirements by major and catalog year
+- `user_profiles` — user preferences, completed courses, in-progress courses
+
+You'll need to create these tables in your Supabase project. See the `supabase/` directory in the repository for migration files.
+
+<Note>
+If migration files aren't included, you can run the scraper (Step 5) which will attempt to insert into these tables. Supabase will auto-create tables if you have the right permissions, but it's better to define the schema explicitly.
+</Note>
+
+## Step 5: Populate the Database with Course Data
+
+Sift includes a scraper that pulls real data from Anex and RateMyProfessors.
+
+### Run the Scraper
+
+```bash
+cd server
+npm run scrape
+```
+
+This script:
+
+1. **Scrapes Anex** — fetches grade distributions for all CSCE courses (110, 111, 120, 121, 221, 222, 310, etc.)
+2. **Scrapes RateMyProfessors** — fetches ratings for all CS department faculty at Texas A&M
+3. **Aggregates data** — groups grade distributions by course, professor, and semester
+4. **Inserts into Supabase** — populates `courses`, `professors`, `grade_distributions`, and `degree_plans` tables
+
+From server/package.json:9
+
+### What the Scraper Does
+
+<CodeGroup>
+
+```typescript Anex Scraper
+async function fetchAnex(dept: string, num: string): Promise<AnexRecord[]> {
+  const body = new URLSearchParams({ dept, number: num }).toString();
+  const url = new URL(ANEX_URL);
+
+  return new Promise((resolve) => {
+    const req = https.request(
+      {
+        hostname: url.hostname,
+        path: url.pathname,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Content-Length": Buffer.byteLength(body),
+        },
+        agent: anexAgent, // TLS bypass scoped to Anex only
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => { data += chunk; });
+        res.on("end", () => {
+          try {
+            const parsed = JSON.parse(data);
+            resolve(parsed.classes || []);
+          } catch {
+            resolve([]);
+          }
+        });
+      }
+    );
+
+    req.on("error", () => resolve([]));
+    req.write(body);
+    req.end();
+  });
+}
+```
+
+```typescript RateMyProfessors Scraper
+async function fetchAllRMPTeachers(): Promise<RMPTeacher[]> {
+  const teachers: RMPTeacher[] = [];
+  let cursor: string | null = null;
+  let hasNext = true;
+  let page = 0;
+
+  while (hasNext) {
+    page++;
+    const afterClause: string = cursor ? `after: "${cursor}"` : "";
+
+    const query: string = `
+      query {
+        newSearch {
+          teachers(
+            query: { text: "", schoolID: "${TAMU_SCHOOL_ID}", departmentID: "${CS_DEPT_ID}" }
+            first: 20
+            ${afterClause}
+          ) {
+            resultCount
+            pageInfo { hasNextPage endCursor }
+            edges {
+              node {
+                id firstName lastName department
+                avgRatingRounded avgDifficultyRounded numRatings
+                wouldTakeAgainPercentRounded legacyId
+                teacherRatingTags { tagName tagCount }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const res: Response = await fetch(RMP_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: RMP_AUTH,
+        "User-Agent": "Mozilla/5.0",
+      },
+      body: JSON.stringify({ query }),
+    });
+
+    const data: any = await res.json();
+    const connection: any = data?.data?.newSearch?.teachers;
+
+    if (!connection) {
+      console.error("  RMP query failed:", JSON.stringify(data?.errors));
+      break;
+    }
+
+    for (const edge of connection.edges) {
+      teachers.push(edge.node);
+    }
+
+    hasNext = connection.pageInfo.hasNextPage;
+    cursor = connection.pageInfo.endCursor;
+
+    console.log(
+      `  Page ${page}: +${connection.edges.length} teachers (total: ${teachers.length})`
+    );
+    await sleep(200);
+  }
+
+  return teachers;
+}
+```
+
+</CodeGroup>
+
+From server/scripts/scrape.ts:699-821
+
+### Expected Output
+
+```
+=== Sift Data Scraper ===
+
+[1/6] Scraping Anex grade distributions...
+  CSCE 110: 45 sections, 12 professors
+  CSCE 121: 120 sections, 18 professors
+  CSCE 221: 95 sections, 15 professors
+  ...
+  Total: 3,247 section records
+
+[2/6] Scraping Rate My Professors...
+  Page 1: +20 teachers (total: 20)
+  Page 2: +20 teachers (total: 40)
+  ...
+  Total: 87 CS professors
+
+[3/6] Aggregating grade distributions...
+  1,542 unique (course, professor, semester) combos
+  68 courses, 104 professors
+
+[4/6] Clearing existing data...
+  Cleared grade_distributions
+  Cleared sections
+  Cleared professors
+  Cleared courses
+  Cleared degree_plans
+
+[5/7] Inserting data into Supabase...
+  Inserting CSCE courses...
+  Inserted 68 CSCE courses
+  Inserting non-CSCE degree plan courses...
+  Inserted 94 non-CSCE courses
+  Inserting professors...
+  71/104 professors matched to RMP profiles
+  Inserted 104 professors
+  Inserting grade distributions...
+  Inserted 1,542 grade distributions
+
+[6/7] Inserting degree plan...
+  Inserted CS degree plan
+
+=== Done ===
+  CSCE courses: 68
+  Non-CSCE courses: 94
+  Professors: 104
+  Grade distributions: 1,542
+  Degree plans: 1
+```
+
+<Warning>
+The scraper **clears existing data** before inserting. Don't run it in production unless you want to reset the database.
+</Warning>
+
+## Step 6: Run the Development Servers
+
+### Option 1: Run Both Servers Concurrently (Recommended)
+
+From the root directory:
+
+```bash
+npm run dev
+```
+
+This starts:
+- **Client** on `http://localhost:3000`
+- **Server** on `http://localhost:3001`
+
+From package.json:6-8
+
+### Option 2: Run Servers Individually
+
+<CodeGroup>
+
+```bash Client Only
+cd client
+npm run dev
+```
+
+```bash Server Only
+cd server
+npm run dev
+```
+
+</CodeGroup>
+
+### Verify the Setup
+
+1. Navigate to `http://localhost:3000`
+2. Sign up for an account (Clerk handles this)
+3. Upload a transcript PDF
+4. Verify recommendations appear
+
+## Development Workflow
+
+### Project Structure
+
+```
+sift/
+├── client/          # Next.js frontend
+│   ├── src/
+│   │   ├── app/           # Next.js App Router pages
+│   │   ├── components/    # React components (shadcn/ui + custom)
+│   │   ├── lib/           # API client, TanStack Query hooks, types
+│   │   └── hooks/         # Custom React hooks
+│   └── public/            # Static assets
+├── server/          # Express API server
+│   ├── src/
+│   │   ├── routes/        # API route handlers
+│   │   ├── services/      # Business logic (scoring, recommendations)
+│   │   ├── middleware/    # Auth middleware
+│   │   ├── db/            # Supabase client
+│   │   └── types/         # TypeScript types
+│   └── scripts/           # Data scraping scripts
+└── supabase/        # Database migrations (if present)
+```
+
+From README.md:69-77
+
+### Key Files
+
+| File | Description |
+|------|-------------|
+| `client/src/lib/api.ts` | API client — fetch functions for all endpoints |
+| `client/src/lib/queries.ts` | TanStack Query hooks wrapping `api.ts` |
+| `server/src/routes/recommendations.ts` | Recommendation engine — scoring and ranking logic |
+| `server/src/routes/transcript.ts` | Transcript upload and Claude API parsing |
+| `server/src/services/scoring.ts` | Course scoring algorithm |
+| `server/scripts/scrape.ts` | Anex + RMP scraper |
+
+### Making Changes
+
+<Steps>
+  <Step title="Client changes">
+    Edit files in `client/src/`. The dev server auto-reloads on save.
+  </Step>
+  <Step title="Server changes">
+    Edit files in `server/src/`. The server restarts automatically (using `tsx watch`).
+  </Step>
+  <Step title="Database schema changes">
+    Update Supabase tables via the Supabase dashboard or migration files. Re-run the scraper if needed.
+  </Step>
+</Steps>
+
+## Common Issues
+
+### "Missing SUPABASE_URL" error
+
+Ensure `server/.env` exists and contains valid Supabase credentials:
+
+```bash
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+```
+
+From server/src/db/supabase.ts:3-6
+
+### Transcript parsing fails
+
+Check that:
+
+1. `ANTHROPIC_API_KEY` is set in `server/.env`
+2. Your API key is valid and has sufficient credits
+3. The uploaded PDF is a valid TAMU transcript (starts with `%PDF` magic bytes)
+
+From server/src/routes/transcript.ts:49-53
+
+### Recommendations are empty
+
+Ensure:
+
+1. You've run the scraper to populate the database
+2. You've uploaded a transcript with completed courses
+3. There are courses available for the selected semester
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Understand the Codebase" icon="book">
+    Explore `server/src/routes/recommendations.ts` to see how course scoring works
+  </Card>
+  <Card title="Contribute" icon="github">
+    Check the GitHub issues for open tasks or propose a new feature
+  </Card>
+</CardGroup>
+
+<Note>
+Sift is open source and welcomes contributions. If you find bugs or have ideas for improvements, open an issue or submit a pull request.
+</Note>

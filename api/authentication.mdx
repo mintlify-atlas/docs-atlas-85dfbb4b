@@ -1,0 +1,218 @@
+---
+title: 'Authentication'
+description: 'How to authenticate with the Sift API using Clerk'
+---
+
+## Overview
+
+The Sift API uses [Clerk](https://clerk.com) for authentication. Clerk provides secure session management and JWT-based authentication tokens.
+
+<Note>
+  Not all endpoints require authentication. Public endpoints like course search and degree plan lookup are accessible without authentication.
+</Note>
+
+## Authentication Flow
+
+Clerk middleware runs on every API request and populates authentication context. Protected endpoints use the `requireAuth` middleware to enforce authentication.
+
+### How It Works
+
+1. **Client Authentication**: User authenticates with Clerk on the frontend
+2. **Token Generation**: Clerk issues a session token (JWT)
+3. **API Request**: Client includes the token in the `Authorization` header
+4. **Token Validation**: Clerk middleware validates the token
+5. **User Context**: If valid, `userId` is attached to the request
+
+## Including Authentication Tokens
+
+Include your Clerk session token in the `Authorization` header as a Bearer token:
+
+```bash
+Authorization: Bearer <your-clerk-session-token>
+```
+
+### Example Request
+
+```bash
+curl -X GET https://api.sift.tamu.edu/api/user/profile \
+  -H "Authorization: Bearer <your-clerk-session-token>" \
+  -H "Content-Type: application/json"
+```
+
+## Frontend Integration
+
+If you're using Clerk on the frontend, you can retrieve the session token using the `useAuth()` hook:
+
+```javascript
+import { useAuth } from '@clerk/clerk-react';
+
+const { getToken } = useAuth();
+
+const fetchUserProfile = async () => {
+  const token = await getToken();
+  
+  const response = await fetch('https://api.sift.tamu.edu/api/user/profile', {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+  
+  const { data, error } = await response.json();
+  return data;
+};
+```
+
+## Protected vs Public Endpoints
+
+The Sift API has a mix of public and protected endpoints.
+
+### Protected Endpoints (Authentication Required)
+
+These endpoints require a valid Clerk session token:
+
+<CardGroup cols={2}>
+  <Card title="User Profile" icon="user">
+    - `GET /api/user/profile`
+    - `PUT /api/user/profile`
+    - `POST /api/user/profile/migrate`
+  </Card>
+  <Card title="Transcript Parsing" icon="file-pdf">
+    - `POST /api/transcript/parse`
+  </Card>
+</CardGroup>
+
+### Public Endpoints (No Authentication)
+
+These endpoints are accessible without authentication:
+
+<CardGroup cols={2}>
+  <Card title="Courses" icon="book">
+    - `GET /api/courses`
+    - `GET /api/courses/:id`
+  </Card>
+  <Card title="Recommendations" icon="star">
+    - `POST /api/recommendations`
+  </Card>
+  <Card title="Professors" icon="chalkboard-user">
+    - `GET /api/professors`
+    - `GET /api/professors/:id`
+  </Card>
+  <Card title="Degree Plans" icon="graduation-cap">
+    - `GET /api/degree-plan/:major`
+    - `POST /api/degree-plan/remaining`
+  </Card>
+</CardGroup>
+
+<Note>
+  While recommendations and degree plan endpoints don't require authentication, they provide better personalization when used with authenticated user profiles.
+</Note>
+
+## Authentication Middleware Implementation
+
+The API uses a custom `requireAuth` middleware that extracts the user ID from Clerk's authentication context:
+
+```typescript
+import { getAuth } from '@clerk/express';
+
+export function requireAuth(req, res, next) {
+  const { userId } = getAuth(req);
+  
+  if (!userId) {
+    res.status(401).json({ 
+      data: null, 
+      error: "Authentication required" 
+    });
+    return;
+  }
+  
+  req.clerkUserId = userId;
+  next();
+}
+```
+
+When authentication succeeds, the user's Clerk ID is attached to `req.clerkUserId` and is available throughout the request lifecycle.
+
+## Error Responses
+
+### Missing Token
+
+If you attempt to access a protected endpoint without a token:
+
+```json
+{
+  "data": null,
+  "error": "Authentication required"
+}
+```
+
+HTTP Status: `401 Unauthorized`
+
+### Invalid Token
+
+If your token is malformed or expired:
+
+```json
+{
+  "data": null,
+  "error": "Authentication required"
+}
+```
+
+HTTP Status: `401 Unauthorized`
+
+<Warning>
+  Clerk session tokens expire after a period of inactivity. If you receive a 401 error, try refreshing the token using Clerk's `getToken()` method.
+</Warning>
+
+## User Profile Auto-Creation
+
+The first time an authenticated user calls `GET /api/user/profile`, the API automatically creates a profile for them:
+
+```json
+{
+  "data": {
+    "clerk_id": "user_abc123",
+    "major": "CS",
+    "catalog_year": "2024-2025",
+    "completed_courses": [],
+    "in_progress_courses": [],
+    "preferences": {},
+    "created_at": "2026-03-14T12:34:56.789Z",
+    "updated_at": "2026-03-14T12:34:56.789Z"
+  },
+  "error": null
+}
+```
+
+<Note>
+  This "lazy provisioning" approach means users don't need a separate registration step. Profiles are created automatically on first API access.
+</Note>
+
+## Security Best Practices
+
+<CardGroup cols={2}>
+  <Card title="HTTPS Only" icon="lock">
+    Always use HTTPS in production to prevent token interception
+  </Card>
+  <Card title="Token Storage" icon="database">
+    Never store tokens in localStorage - use Clerk's built-in session management
+  </Card>
+  <Card title="Token Refresh" icon="rotate">
+    Implement automatic token refresh to handle expiration gracefully
+  </Card>
+  <Card title="CORS Configuration" icon="shield">
+    The API restricts CORS to configured frontend origins
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Introduction" icon="book-open" href="/api/introduction">
+    Learn about rate limits and response formats
+  </Card>
+  <Card title="User Endpoints" icon="user" href="/api/user">
+    Explore user profile management endpoints
+  </Card>
+</CardGroup>

@@ -1,80 +1,247 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: 'Quickstart'
+description: 'Get up and running with Sift in 5 minutes'
 ---
 
-## Get started in three steps
+Get your first personalized course recommendations in just a few steps. This guide walks you through creating an account, uploading your transcript, and viewing AI-powered course suggestions.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Before you begin, make sure you have:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+- A valid email address (for account creation)
+- Your unofficial transcript PDF (downloadable from Howdy)
+- A few minutes to set up your profile
 
-### Step 2: Deploy your changes
+## Step 1: Create an Account
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+<Steps>
+  <Step title="Visit Sift">
+    Navigate to the Sift homepage and click **Sign Up** in the top right corner.
+  </Step>
+  
+  <Step title="Sign up with Clerk">
+    Sift uses Clerk for secure authentication. You can sign up with:
+    - Email and password
+    - Google account
+    - GitHub account
+  </Step>
+  
+  <Step title="Verify your email">
+    Check your inbox for a verification email from Clerk and click the verification link.
+  </Step>
+</Steps>
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  Your Sift account is completely separate from your university credentials. We never ask for your NetID or password.
 </Note>
+
+## Step 2: Upload Your Transcript
+
+Once you're signed in, you'll see the main dashboard. The fastest way to get started is to upload your transcript.
+
+<Steps>
+  <Step title="Download your transcript from Howdy">
+    1. Log in to [Howdy](https://howdy.tamu.edu)
+    2. Navigate to **My Record** → **View Unofficial Transcript**
+    3. Download as PDF (not HTML)
+  </Step>
+  
+  <Step title="Click 'Upload Transcript' in Sift">
+    On the dashboard sidebar, click the **Upload Transcript** button.
+  </Step>
+  
+  <Step title="Select your PDF">
+    Drag and drop your transcript PDF, or click to browse and select the file.
+    
+    <Warning>
+      - Maximum file size: **2MB**
+      - Only **PDF files** are accepted
+      - Transcript parsing uses AI and may take 5-10 seconds
+    </Warning>
+  </Step>
+  
+  <Step title="Review extracted courses">
+    Sift uses Claude AI to automatically extract your completed courses. Review the parsed courses to ensure accuracy:
+    
+    - **Green checkmark**: Course code recognized (e.g., `CSCE 121`)
+    - **Yellow warning**: Grade unusual but valid (e.g., `W`, `IP`)
+    - **Red error**: Course code invalid or not recognized
+    
+    You can manually edit or remove any incorrectly parsed courses before saving.
+  </Step>
+  
+  <Step title="Confirm and save">
+    Click **Save Courses** to add them to your profile. These will be used to:
+    - Calculate your degree progress
+    - Validate prerequisites for future courses
+    - Filter out courses you've already completed
+  </Step>
+</Steps>
+
+## Step 3: View Your Recommendations
+
+After uploading your transcript, Sift automatically generates personalized course recommendations.
+
+<Steps>
+  <Step title="Check the recommendations list">
+    The main dashboard shows ranked course recommendations for your selected semester (defaults to the next upcoming semester).
+    
+    Each recommendation includes:
+    - **Course code and name** (e.g., CSCE 221 - Data Structures)
+    - **Composite score** (0-1 scale, higher is better)
+    - **Professor name and rating** (from RateMyProfessors)
+    - **Grade distribution** (average GPA and A%)
+    - **Requirement type** (core, elective, capstone, etc.)
+  </Step>
+  
+  <Step title="Understand the scores">
+    Sift uses a **multi-factor scoring algorithm** that weighs:
+    
+    - **GPA Score (25%)**: Historical average GPA for this course/professor
+    - **Professor Rating (20%)**: RateMyProfessors overall rating
+    - **Would Take Again (15%)**: RMP "would take again" percentage
+    - **Difficulty Penalty (15%)**: Course difficulty (lower is better)
+    - **Requirement Bonus (15%)**: Priority based on degree requirements
+    - **Schedule Fit (10%)**: Matches your preferred time slots
+    
+    Learn more in the [Understanding Scores](/guides/understanding-scores) guide.
+  </Step>
+  
+  <Step title="Filter and search">
+    Use the search bar to filter by:
+    - Course code (e.g., "CSCE 310")
+    - Course name (e.g., "Database")
+    - Professor name (e.g., "Smith")
+  </Step>
+</Steps>
+
+## Step 4: Customize Your Preferences
+
+Want to prioritize certain factors over others? Adjust your recommendation weights.
+
+<Steps>
+  <Step title="Open the preferences panel">
+    In the right sidebar, expand the **Recommendation Weights** section.
+  </Step>
+  
+  <Step title="Adjust the sliders">
+    Drag the sliders to change how much each factor influences your recommendations:
+    
+    - **High GPA priority**: Increase GPA Score weight to 0.4+
+    - **Professor-focused**: Increase Professor Rating and Would Take Again to 0.3+ each
+    - **Requirement-driven**: Increase Requirement Bonus to 0.3+
+    - **Schedule-sensitive**: Increase Schedule Fit to 0.2+
+  </Step>
+  
+  <Step title="Set your preferred times">
+    Select your preferred class times:
+    - **Morning**: Before 12:00 PM
+    - **Afternoon**: 12:00 PM - 5:00 PM
+    - **Evening**: After 5:00 PM
+  </Step>
+  
+  <Step title="Save and refresh">
+    Your recommendations will automatically update as you adjust weights. The list re-ranks in real-time.
+  </Step>
+</Steps>
+
+<Tip>
+  Try different weight configurations to explore different course options. For example, set GPA weight to 0.5 to see the "easiest A's" or set Requirement Bonus to 0.5 to prioritize graduating on time.
+</Tip>
+
+## Step 5: Track Your Degree Progress
+
+The right sidebar shows your progress toward degree completion.
+
+<Steps>
+  <Step title="View overall progress">
+    The progress bar shows your percentage toward the total 128 credit hours required for a CS degree.
+  </Step>
+  
+  <Step title="Check requirement categories">
+    Each requirement category shows:
+    - **Credits completed** (from uploaded transcript)
+    - **Credits in progress** (manually added courses)
+    - **Credits remaining**
+    
+    Categories include:
+    - Core CS courses (CSCE 121, 221, 222, etc.)
+    - Math requirements (MATH 151, 152, 221, etc.)
+    - Science requirements (PHYS 206, CHEM 107, etc.)
+    - Electives (Track I, Track II, Senior Capstone)
+  </Step>
+  
+  <Step title="Identify what's left">
+    Courses highlighted in the recommendations list indicate which requirement category they satisfy.
+    
+    - **Amber highlight**: Core requirement
+    - **Purple highlight**: Capstone requirement
+    - **Blue highlight**: Elective
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Customize Preferences" icon="sliders" href="/guides/customizing-preferences">
+    Fine-tune your recommendation weights and constraints
+  </Card>
+  <Card title="Understanding Scores" icon="calculator" href="/guides/understanding-scores">
+    Learn how Sift calculates composite scores
+  </Card>
+  <Card title="Upload Transcripts" icon="file-pdf" href="/guides/uploading-transcripts">
+    Detailed guide on transcript parsing and troubleshooting
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/introduction">
+    Build integrations with the Sift API
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<Accordion title="My transcript didn't parse correctly">
+  If Claude AI fails to extract courses accurately:
+  
+  1. **Check PDF quality**: Ensure the PDF is not scanned/image-based
+  2. **Use official transcript**: Download from Howdy, not a screenshot
+  3. **Manual entry**: Use the **Edit Courses** button to manually add/remove courses
+  4. **Try again**: Click **Upload Transcript** to retry with a fresh PDF
+</Accordion>
+
+<Accordion title="I don't see any recommendations">
+  If the recommendations list is empty:
+  
+  1. **Check prerequisites**: You may have already completed all eligible courses
+  2. **Change semester**: Try selecting a different semester (Fall vs Spring)
+  3. **Review degree plan**: Some courses may only be offered in specific semesters
+  4. **Adjust filters**: Clear any active search filters
+</Accordion>
+
+<Accordion title="How do I add in-progress courses?">
+  Courses you're currently taking should be marked as "In Progress" so they satisfy prerequisites for next semester:
+  
+  1. Click **Edit Courses** in the sidebar
+  2. Find the course in the list
+  3. Toggle it to **In Progress** instead of **Completed**
+  4. Save changes
+</Accordion>
+
+<Accordion title="Can I exclude specific courses?">
+  Yes! If you want to avoid certain courses (e.g., known difficult professors, time conflicts):
+  
+  1. Open **Recommendation Weights** in the sidebar
+  2. Scroll to **Excluded Courses**
+  3. Enter course codes (e.g., `CSCE 310`) one per line
+  4. Save preferences
+  
+  Excluded courses will no longer appear in your recommendations.
+</Accordion>
+
+## Need Help?
+
+If you run into issues or have questions:
+
+- Check the [Setup Guide](/setup) for local development
+- Read the [API Documentation](/api/introduction) for integration details
+- Report bugs on [GitHub](https://github.com/aadit2805/sift)

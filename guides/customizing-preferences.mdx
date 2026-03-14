@@ -1,0 +1,289 @@
+---
+title: "Customizing Preferences"
+description: "Configure your preference weights and constraints to personalize course recommendations"
+---
+
+## Overview
+
+Sift uses your preferences to calculate personalized scores for each course recommendation. By adjusting preference weights and constraints, you can prioritize what matters most to you—whether that's GPA, professor ratings, schedule fit, or degree requirements.
+
+## Default Preferences
+
+When you first create an account, Sift initializes your preferences with balanced default values:
+
+```javascript
+{
+  weight_gpa: 0.25,
+  weight_professor: 0.20,
+  weight_would_take_again: 0.15,
+  weight_difficulty: 0.15,
+  weight_requirement: 0.15,
+  weight_schedule: 0.10,
+  min_credits: 12,
+  max_credits: 18,
+  preferred_times: ["morning", "afternoon"],
+  excluded_courses: []
+}
+```
+
+These defaults prioritize GPA and professor quality while maintaining reasonable credit hour limits for full-time students.
+
+## Preference Weights
+
+Weights determine how much each factor contributes to a course's overall score. Higher weights mean that factor has more influence on recommendations.
+
+<Note>
+All weights are decimals between 0 and 1. The sum of weights doesn't need to equal 1.0, but keeping them balanced (totaling around 1.0) makes scores easier to interpret.
+</Note>
+
+### weight_gpa
+
+**Default:** `0.25` (25% of total score)
+
+Controls how much the historical GPA for a course influences its score. Courses with higher average GPAs are ranked higher.
+
+- **Higher values:** Prioritize "easy A" courses with high GPA distributions
+- **Lower values:** GPA matters less; you're willing to take harder courses
+- **Use case:** Set higher if you need to boost your GPA or are on academic probation
+
+<Tip>
+If you're aiming for a high GPA to qualify for graduate school or scholarships, increase `weight_gpa` to 0.35-0.40.
+</Tip>
+
+### weight_professor
+
+**Default:** `0.20` (20% of total score)
+
+Prioritizes courses taught by professors with high RateMyProfessor ratings (1.0 to 5.0 scale).
+
+- **Higher values:** Only want courses with highly-rated professors
+- **Lower values:** Professor quality is less important than other factors
+- **Use case:** Set higher if teaching quality significantly impacts your learning
+
+### weight_would_take_again
+
+**Default:** `0.15` (15% of total score)
+
+Factors in the "would take again" percentage from RateMyProfessor (0-100%).
+
+- **Higher values:** Prioritize professors students would retake
+- **Lower values:** This metric matters less to you
+- **Use case:** Complements `weight_professor` for a fuller picture of professor quality
+
+<Warning>
+Not all professors have RateMyProfessor data. Courses without professor ratings default to a neutral 0.5 score for professor-related metrics.
+</Warning>
+
+### weight_difficulty
+
+**Default:** `0.15` (15% of total score)
+
+Applies a **penalty** based on RateMyProfessor difficulty ratings (1.0 to 5.0 scale). Note that this weight is **subtracted** from the total score.
+
+- **Higher values:** Avoid difficult courses more strongly
+- **Lower values:** Difficulty doesn't deter you
+- **Use case:** Set lower if you enjoy challenging courses, or higher if you prefer manageable workloads
+
+<Tip>
+Difficulty is the only factor that **reduces** your score. It's subtracted in the scoring formula: `total = ... - weight_difficulty * difficulty_penalty + ...`
+</Tip>
+
+### weight_requirement
+
+**Default:** `0.15` (15% of total score)
+
+Boosts courses that fulfill remaining degree requirements. Core requirements receive the highest bonus (1.0), followed by math/lab/science requirements (0.8), then electives (0.5).
+
+- **Higher values:** Strongly prioritize graduation requirements
+- **Lower values:** Explore electives and courses outside your degree plan
+- **Use case:** Set higher if you're behind on requirements or close to graduating
+
+**Requirement priority levels:**
+- **Core/Capstone requirements:** 1.0 bonus
+- **Lab/Math/Science requirements:** 0.8 bonus
+- **Elective requirements:** 0.5 bonus
+- **Non-requirements:** 0.0 bonus
+
+### weight_schedule
+
+**Default:** `0.10` (10% of total score)
+
+Favors courses offered during your preferred time slots (morning, afternoon, evening).
+
+- **Higher values:** Schedule fit is very important
+- **Lower values:** You're flexible with course times
+- **Use case:** Set higher if you have work/family commitments during specific times
+
+**Time buckets:**
+- **Morning:** Before 12:00 PM
+- **Afternoon:** 12:00 PM - 4:59 PM
+- **Evening:** 5:00 PM and later
+
+<Note>
+If a course is offered during one of your `preferred_times`, it receives a schedule fit score of 1.0. Otherwise, it receives 0.2 (low fit).
+</Note>
+
+## Credit Hour Constraints
+
+### min_credits
+
+**Default:** `12`
+
+Minimum total credit hours for course recommendations. This ensures you maintain full-time student status (typically 12+ credits).
+
+- **Typical values:** 12 (full-time minimum), 6 (part-time), 15 (standard load)
+- **Use case:** Set to 12 if you need to maintain full-time status for financial aid
+
+### max_credits
+
+**Default:** `18`
+
+Maximum total credit hours for course recommendations. Prevents overloading your schedule.
+
+- **Typical values:** 15 (comfortable load), 18 (heavy load), 21 (requires approval at most schools)
+- **Use case:** Set lower if you work part-time or want to avoid burnout
+
+<Warning>
+Some universities require special approval to take more than 18 credits. Check your institution's policies before setting `max_credits` above 18.
+</Warning>
+
+## Time Preferences
+
+### preferred_times
+
+**Default:** `["morning", "afternoon"]`
+
+Array of preferred time buckets when you want to take classes. Courses offered during these times receive higher schedule fit scores.
+
+**Options:**
+- `"morning"` — Before noon (great for early birds)
+- `"afternoon"` — 12:00 PM - 4:59 PM (mid-day classes)
+- `"evening"` — 5:00 PM and later (for working students)
+
+**Examples:**
+```javascript
+// Early bird who prefers morning classes only
+preferred_times: ["morning"]
+
+// Working student who can only attend evening classes
+preferred_times: ["evening"]
+
+// Flexible student avoiding early mornings
+preferred_times: ["afternoon", "evening"]
+```
+
+## Course Exclusions
+
+### excluded_courses
+
+**Default:** `[]` (empty array)
+
+List of course codes to exclude from recommendations. Useful for courses you've already attempted, dropped, or want to avoid.
+
+**Format:** Array of uppercase course codes
+
+**Example:**
+```javascript
+excluded_courses: ["CSCE 314", "MATH 365", "PHIL 240"]
+```
+
+<Tip>
+Use `excluded_courses` to filter out courses you've withdrawn from or courses with scheduling conflicts you can't resolve.
+</Tip>
+
+## Example Preference Profiles
+
+<Accordion title="GPA Optimizer (Pre-Med/Pre-Law)">
+  Maximize GPA while completing requirements:
+  
+  ```javascript
+  {
+    weight_gpa: 0.40,
+    weight_professor: 0.20,
+    weight_would_take_again: 0.10,
+    weight_difficulty: 0.20,  // Avoid hard courses
+    weight_requirement: 0.10,
+    weight_schedule: 0.05,
+    min_credits: 15,
+    max_credits: 17
+  }
+  ```
+</Accordion>
+
+<Accordion title="Requirement Rusher (Graduating Soon)">
+  Focus on finishing degree requirements quickly:
+  
+  ```javascript
+  {
+    weight_gpa: 0.15,
+    weight_professor: 0.15,
+    weight_would_take_again: 0.10,
+    weight_difficulty: 0.10,
+    weight_requirement: 0.40,  // Prioritize requirements
+    weight_schedule: 0.10,
+    min_credits: 15,
+    max_credits: 18
+  }
+  ```
+</Accordion>
+
+<Accordion title="Working Student">
+  Evening classes with manageable workload:
+  
+  ```javascript
+  {
+    weight_gpa: 0.20,
+    weight_professor: 0.20,
+    weight_would_take_again: 0.10,
+    weight_difficulty: 0.15,
+    weight_requirement: 0.15,
+    weight_schedule: 0.35,  // Schedule is critical
+    min_credits: 9,   // Part-time
+    max_credits: 12,
+    preferred_times: ["evening"]
+  }
+  ```
+</Accordion>
+
+<Accordion title="Academic Explorer">
+  Explore courses with great professors, less focus on requirements:
+  
+  ```javascript
+  {
+    weight_gpa: 0.15,
+    weight_professor: 0.35,  // Love learning from great teachers
+    weight_would_take_again: 0.25,
+    weight_difficulty: 0.05,  // Challenge accepted
+    weight_requirement: 0.10,
+    weight_schedule: 0.10,
+    min_credits: 12,
+    max_credits: 15
+  }
+  ```
+</Accordion>
+
+## Updating Your Preferences
+
+You can update preferences at any time through the Sift preferences page. Changes take effect immediately and will rerank your course recommendations.
+
+<Steps>
+  <Step title="Navigate to preferences">
+    Click "Preferences" in your dashboard sidebar.
+  </Step>
+  
+  <Step title="Adjust weights and constraints">
+    Use the sliders or input fields to modify preference values.
+  </Step>
+  
+  <Step title="Save changes">
+    Click "Save Preferences" to apply your changes.
+  </Step>
+  
+  <Step title="View updated recommendations">
+    Return to the recommendations page to see courses re-scored with your new preferences.
+  </Step>
+</Steps>
+
+## Understanding the Impact
+
+After customizing your preferences, check the [Understanding Scores](/guides/understanding-scores) guide to see how your weights affect the final composite score for each course recommendation.

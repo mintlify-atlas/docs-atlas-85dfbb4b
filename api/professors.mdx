@@ -1,0 +1,347 @@
+---
+title: Professors API
+description: Endpoints for searching professors and viewing teaching history with RateMyProfessor integration
+---
+
+## List Professors
+
+<div className="api-method">
+  <div className="api-method-badge get">GET</div>
+  <code>/api/professors</code>
+</div>
+
+Retrieve a list of professors with optional filtering by department, search term, or courses taught.
+
+### Query Parameters
+
+<ParamField query="department" type="string" optional>
+  Filter professors by department code (e.g., "CSCE", "MATH"). Case-insensitive.
+</ParamField>
+
+<ParamField query="search" type="string" optional>
+  Search professors by name. Performs case-insensitive partial matching.
+</ParamField>
+
+<ParamField query="course_id" type="string" optional>
+  Filter to professors who have taught a specific course. Must be a valid course UUID.
+</ParamField>
+
+### Response
+
+Returns an array of professor objects ordered alphabetically by name.
+
+<ResponseField name="data" type="Professor[]">
+  Array of professor objects
+  
+  <Expandable title="Professor object properties">
+    <ResponseField name="id" type="string">
+      UUID identifier for the professor
+    </ResponseField>
+    
+    <ResponseField name="name" type="string">
+      Full name of the professor
+    </ResponseField>
+    
+    <ResponseField name="department" type="string">
+      Primary department code
+    </ResponseField>
+    
+    <ResponseField name="rmp_id" type="string | null">
+      RateMyProfessor ID, if available
+    </ResponseField>
+    
+    <ResponseField name="rmp_rating" type="number | null">
+      Overall rating from RateMyProfessor (1.0-5.0 scale)
+    </ResponseField>
+    
+    <ResponseField name="rmp_difficulty" type="number | null">
+      Difficulty rating from RateMyProfessor (1.0-5.0 scale)
+    </ResponseField>
+    
+    <ResponseField name="rmp_would_take_again" type="number | null">
+      "Would take again" percentage (0-100)
+    </ResponseField>
+    
+    <ResponseField name="rmp_tags" type="string[]">
+      Popular tags from RateMyProfessor (e.g., ["Tough grader", "Caring"])
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="error" type="string | null">
+  Error message if request failed, otherwise null
+</ResponseField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl -X GET "https://api.sift.app/api/professors?department=CSCE&search=smith"
+```
+
+```javascript JavaScript
+const response = await fetch(
+  'https://api.sift.app/api/professors?department=CSCE&search=smith'
+);
+const { data, error } = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    'https://api.sift.app/api/professors',
+    params={'department': 'CSCE', 'search': 'smith'}
+)
+result = response.json()
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": [
+    {
+      "id": "prof-123",
+      "name": "Dr. John Smith",
+      "department": "CSCE",
+      "rmp_id": "12345",
+      "rmp_rating": 4.2,
+      "rmp_difficulty": 3.5,
+      "rmp_would_take_again": 78,
+      "rmp_tags": ["Tough grader", "Amazing lectures", "Helpful"]
+    }
+  ],
+  "error": null
+}
+```
+
+<Note>
+  When using the `course_id` parameter, only professors who have taught that specific course (based on grade distribution data) will be returned.
+</Note>
+
+---
+
+## Get Professor by ID
+
+<div className="api-method">
+  <div className="api-method-badge get">GET</div>
+  <code>/api/professors/:id</code>
+</div>
+
+Retrieve detailed information about a specific professor, including complete grade history across all courses taught.
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  Professor UUID. Must be a valid UUID format.
+</ParamField>
+
+### Response
+
+Returns a professor object with embedded grade history.
+
+<ResponseField name="data" type="object">
+  Professor object with grade history
+  
+  <Expandable title="Properties">
+    <ResponseField name="id" type="string">
+      Professor UUID
+    </ResponseField>
+    
+    <ResponseField name="name" type="string">
+      Professor name
+    </ResponseField>
+    
+    <ResponseField name="department" type="string">
+      Department code
+    </ResponseField>
+    
+    <ResponseField name="rmp_id" type="string | null">
+      RateMyProfessor ID
+    </ResponseField>
+    
+    <ResponseField name="rmp_rating" type="number | null">
+      RateMyProfessor overall rating
+    </ResponseField>
+    
+    <ResponseField name="rmp_difficulty" type="number | null">
+      RateMyProfessor difficulty rating
+    </ResponseField>
+    
+    <ResponseField name="rmp_would_take_again" type="number | null">
+      "Would take again" percentage
+    </ResponseField>
+    
+    <ResponseField name="rmp_tags" type="string[]">
+      RateMyProfessor tags
+    </ResponseField>
+    
+    <ResponseField name="grade_history" type="GradeDistribution[]">
+      Complete teaching history with grade distributions, ordered by semester (most recent first)
+      
+      <Expandable title="GradeDistribution properties">
+        <ResponseField name="id" type="string">
+          Grade distribution UUID
+        </ResponseField>
+        
+        <ResponseField name="course_id" type="string">
+          Course UUID
+        </ResponseField>
+        
+        <ResponseField name="professor_id" type="string">
+          Professor UUID
+        </ResponseField>
+        
+        <ResponseField name="semester" type="string">
+          Semester (e.g., "Fall 2025")
+        </ResponseField>
+        
+        <ResponseField name="a_pct" type="number">
+          Percentage of A grades
+        </ResponseField>
+        
+        <ResponseField name="b_pct" type="number">
+          Percentage of B grades
+        </ResponseField>
+        
+        <ResponseField name="c_pct" type="number">
+          Percentage of C grades
+        </ResponseField>
+        
+        <ResponseField name="d_pct" type="number">
+          Percentage of D grades
+        </ResponseField>
+        
+        <ResponseField name="f_pct" type="number">
+          Percentage of F grades
+        </ResponseField>
+        
+        <ResponseField name="q_pct" type="number">
+          Percentage of Q (withdrawn) grades
+        </ResponseField>
+        
+        <ResponseField name="avg_gpa" type="number">
+          Average GPA for the section
+        </ResponseField>
+        
+        <ResponseField name="enrollment" type="number">
+          Total enrollment count
+        </ResponseField>
+        
+        <ResponseField name="courses" type="object">
+          Embedded course information
+          
+          <Expandable title="Course fields">
+            <ResponseField name="department" type="string">
+              Course department
+            </ResponseField>
+            
+            <ResponseField name="number" type="string">
+              Course number
+            </ResponseField>
+            
+            <ResponseField name="name" type="string">
+              Course name
+            </ResponseField>
+          </Expandable>
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="error" type="string | null">
+  Error message if request failed, otherwise null
+</ResponseField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl -X GET "https://api.sift.app/api/professors/prof-123e4567-e89b-12d3-a456-426614174000"
+```
+
+```javascript JavaScript
+const response = await fetch(
+  'https://api.sift.app/api/professors/prof-123e4567-e89b-12d3-a456-426614174000'
+);
+const { data, error } = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    'https://api.sift.app/api/professors/prof-123e4567-e89b-12d3-a456-426614174000'
+)
+result = response.json()
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "id": "prof-123",
+    "name": "Dr. John Smith",
+    "department": "CSCE",
+    "rmp_id": "12345",
+    "rmp_rating": 4.2,
+    "rmp_difficulty": 3.5,
+    "rmp_would_take_again": 78,
+    "rmp_tags": ["Tough grader", "Amazing lectures"],
+    "grade_history": [
+      {
+        "id": "grade-456",
+        "course_id": "course-789",
+        "professor_id": "prof-123",
+        "semester": "Spring 2025",
+        "a_pct": 45.2,
+        "b_pct": 30.1,
+        "c_pct": 15.3,
+        "d_pct": 5.2,
+        "f_pct": 2.1,
+        "q_pct": 2.1,
+        "avg_gpa": 3.15,
+        "enrollment": 195,
+        "courses": {
+          "department": "CSCE",
+          "number": "310",
+          "name": "Database Systems"
+        }
+      },
+      {
+        "id": "grade-457",
+        "course_id": "course-789",
+        "professor_id": "prof-123",
+        "semester": "Fall 2024",
+        "a_pct": 42.0,
+        "b_pct": 32.5,
+        "c_pct": 17.0,
+        "d_pct": 6.0,
+        "f_pct": 1.5,
+        "q_pct": 1.0,
+        "avg_gpa": 3.08,
+        "enrollment": 200,
+        "courses": {
+          "department": "CSCE",
+          "number": "310",
+          "name": "Database Systems"
+        }
+      }
+    ]
+  },
+  "error": null
+}
+```
+
+<Note>
+  Grade history is sorted by semester in descending order (most recent first), allowing you to see teaching trends over time.
+</Note>
+
+<Warning>
+  Returns 404 if the professor is not found. The `id` parameter must be a valid UUID format.
+</Warning>

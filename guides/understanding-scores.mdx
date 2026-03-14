@@ -1,0 +1,307 @@
+---
+title: "Understanding Scores"
+description: "Learn how Sift calculates composite scores and interprets score breakdowns for course recommendations"
+---
+
+## Overview
+
+Every course recommendation in Sift receives a **composite score** based on multiple factors weighted by your preferences. Understanding how this score is calculated helps you make informed decisions about which courses to take.
+
+## Composite Score Formula
+
+The composite score is calculated using this formula (from `scoring.ts:82-88`):
+
+```javascript
+total = 
+  weight_gpa * gpa_score +
+  weight_professor * professor_score +
+  weight_would_take_again * would_take_again_score -
+  weight_difficulty * difficulty_penalty +
+  weight_requirement * requirement_bonus +
+  weight_schedule * schedule_fit
+```
+
+<Note>
+Notice that `difficulty_penalty` is **subtracted** from the total, while all other factors are added. This means higher difficulty ratings reduce a course's score.
+</Note>
+
+## Score Components
+
+Each component is normalized to a value between 0 and 1 (except for factors that are bonuses or penalties). Here's how each factor is calculated:
+
+### gpa_score
+
+**Range:** 0.0 to 1.0  
+**Data source:** Historical grade distributions for the course
+
+Measures the average GPA students have achieved in this course. Higher values indicate courses where students typically earn better grades.
+
+**Calculation:**
+```javascript
+gpa_score = normalize(avg_gpa, min: 1.5, max: 4.0)
+```
+
+- **1.0:** Course has a 4.0 average GPA (easiest)
+- **0.5:** Course has a ~2.75 average GPA (moderate)
+- **0.0:** Course has a 1.5 or lower average GPA (very difficult)
+
+<Tip>
+If no grade distribution data exists for a course, it defaults to 0.5 (neutral).
+</Tip>
+
+### professor_score
+
+**Range:** 0.0 to 1.0  
+**Data source:** RateMyProfessor ratings (1.0-5.0 scale)
+
+Reflects student satisfaction with the professor teaching the course.
+
+**Calculation:**
+```javascript
+professor_score = normalize(rmp_rating, min: 1.0, max: 5.0)
+```
+
+- **1.0:** Professor has a 5.0 RMP rating (excellent)
+- **0.5:** Professor has a ~3.0 RMP rating (average)
+- **0.0:** Professor has a 1.0 RMP rating (poor)
+
+<Warning>
+Not all professors have RateMyProfessor profiles. If RMP data is unavailable, the score defaults to 0.5 (neutral).
+</Warning>
+
+### would_take_again_score
+
+**Range:** 0.0 to 1.0  
+**Data source:** RateMyProfessor "would take again" percentage (0-100%)
+
+Indicates what percentage of students would retake a course with this professor.
+
+**Calculation:**
+```javascript
+would_take_again_score = normalize(rmp_would_take_again, min: 0, max: 100)
+```
+
+- **1.0:** 100% of students would take again
+- **0.5:** 50% of students would take again
+- **0.0:** 0% of students would take again
+
+### difficulty_penalty
+
+**Range:** 0.0 to 1.0 (inverted)  
+**Data source:** RateMyProfessor difficulty rating (1.0-5.0 scale)
+
+Represents how challenging students found the professor's courses. **This value is subtracted from the total score.**
+
+**Calculation:**
+```javascript
+difficulty_penalty = normalize(rmp_difficulty, min: 1.0, max: 5.0)
+```
+
+- **1.0 penalty:** Professor has a 5.0 difficulty rating (very hard)
+- **0.5 penalty:** Professor has a ~3.0 difficulty rating (moderate)
+- **0.0 penalty:** Professor has a 1.0 difficulty rating (very easy)
+
+<Note>
+Because difficulty is subtracted, a course with a high difficulty rating will have a **lower** composite score. If `weight_difficulty` is 0.15 and `difficulty_penalty` is 1.0, the final score is reduced by 0.15.
+</Note>
+
+### requirement_bonus
+
+**Range:** 0.0, 0.5, 0.8, or 1.0  
+**Data source:** Your degree plan and remaining requirements
+
+Boosts courses that fulfill outstanding degree requirements. The bonus value depends on requirement type:
+
+| Requirement Type | Bonus Value |
+|------------------|-------------|
+| Core or Capstone | 1.0 |
+| Lab, Math, or Science | 0.8 |
+| Elective | 0.5 |
+| Non-requirement | 0.0 |
+
+**Example:**
+If `weight_requirement` is 0.15 and a course is a core requirement (`requirement_bonus = 1.0`), the course receives a **+0.15 boost** to its score.
+
+<Tip>
+Courses that don't fulfill any remaining requirements receive no bonus. Take these as electives only if they score highly on other factors.
+</Tip>
+
+### schedule_fit
+
+**Range:** 0.2 or 1.0  
+**Data source:** Course time slot and your `preferred_times` setting
+
+Indicates whether the course is offered during your preferred time windows.
+
+**Calculation:**
+- Extract the start time from the section's time slot (e.g., "09:35" from "09:35-10:50")
+- Map to time bucket:
+  - **Morning:** Before 12:00 PM
+  - **Afternoon:** 12:00 PM to 4:59 PM
+  - **Evening:** 5:00 PM and later
+- Check if bucket is in your `preferred_times` array
+
+**Score:**
+- **1.0:** Course is offered during a preferred time
+- **0.2:** Course is offered during a non-preferred time
+
+<Warning>
+If no section data is available, `schedule_fit` defaults to 0.5 (neutral).
+</Warning>
+
+## Score Breakdown Example
+
+Let's walk through a real example with default preferences:
+
+**Course:** CSCE 314 (Programming Languages)  
+**Professor:** Dr. Smith (4.2 RMP, 75% would take again, 3.8 difficulty)  
+**Grade Distribution:** 3.2 avg GPA  
+**Requirement:** Core requirement  
+**Time Slot:** 10:00 AM (morning)
+
+### Step 1: Calculate component scores
+
+```javascript
+gpa_score = normalize(3.2, 1.5, 4.0) = (3.2 - 1.5) / (4.0 - 1.5) = 0.68
+professor_score = normalize(4.2, 1.0, 5.0) = (4.2 - 1.0) / (5.0 - 1.0) = 0.80
+would_take_again_score = normalize(75, 0, 100) = 75 / 100 = 0.75
+difficulty_penalty = normalize(3.8, 1.0, 5.0) = (3.8 - 1.0) / (5.0 - 1.0) = 0.70
+requirement_bonus = 1.0  // Core requirement
+schedule_fit = 1.0  // Morning is in preferred_times
+```
+
+### Step 2: Apply weights (default)
+
+```javascript
+weight_gpa = 0.25
+weight_professor = 0.20
+weight_would_take_again = 0.15
+weight_difficulty = 0.15
+weight_requirement = 0.15
+weight_schedule = 0.10
+```
+
+### Step 3: Calculate composite score
+
+```javascript
+total = 
+  (0.25 × 0.68) +  // GPA contribution: 0.17
+  (0.20 × 0.80) +  // Professor contribution: 0.16
+  (0.15 × 0.75) +  // Would take again contribution: 0.11
+  -(0.15 × 0.70) + // Difficulty penalty: -0.11
+  (0.15 × 1.0) +   // Requirement bonus: 0.15
+  (0.10 × 1.0)     // Schedule fit: 0.10
+
+total = 0.17 + 0.16 + 0.11 - 0.11 + 0.15 + 0.10 = 0.58
+```
+
+**Final Score:** 0.58
+
+<Accordion title="View breakdown object">
+  ```json
+  {
+    "gpa_score": 0.68,
+    "professor_score": 0.80,
+    "would_take_again_score": 0.75,
+    "difficulty_penalty": 0.70,
+    "requirement_bonus": 1.0,
+    "schedule_fit": 1.0,
+    "total": 0.58
+  }
+  ```
+</Accordion>
+
+## Interpreting Scores
+
+Composite scores typically range from **-0.5 to 1.5**, though the exact range depends on your preference weights.
+
+| Score Range | Interpretation |
+|-------------|----------------|
+| **0.8+** | Excellent match — highly recommended |
+| **0.6 - 0.79** | Good match — solid choice |
+| **0.4 - 0.59** | Moderate match — acceptable |
+| **0.2 - 0.39** | Weak match — consider alternatives |
+| **< 0.2** | Poor match — avoid unless required |
+
+<Note>
+These ranges assume default preference weights. If you heavily customize weights, your score distribution may shift significantly.
+</Note>
+
+## Reasoning Strings
+
+Each scored course includes a `reasoning` string that summarizes key factors in plain English. This is generated in `scoring.ts:100-119`.
+
+**Format:**
+```
+avg GPA [value] ([A_pct]% A rate) · [Professor Name]: [rating]/5 RMP · [requirement type]
+```
+
+**Example:**
+```
+avg GPA 3.24 (45% A rate) · Dr. Johnson: 4.3/5 RMP · core requirement
+```
+
+The reasoning string includes:
+- **GPA and A rate** (if grade distribution data exists)
+- **Professor name and RMP rating** (if professor data exists)
+- **Requirement type** (if the course fulfills a requirement)
+
+<Tip>
+Reasoning strings provide a quick overview without needing to check the full breakdown. Use them to compare courses at a glance.
+</Tip>
+
+## Missing Data Handling
+
+Sift handles missing data gracefully by using neutral default values:
+
+| Missing Data | Default Value | Impact |
+|--------------|---------------|--------|
+| Grade distribution | `gpa_score = 0.5` | Neutral GPA contribution |
+| Professor RMP rating | `professor_score = 0.5` | Neutral professor contribution |
+| Would take again % | `would_take_again_score = 0.5` | Neutral contribution |
+| Difficulty rating | `difficulty_penalty = 0.5` | Moderate penalty |
+| Section time slot | `schedule_fit = 0.5` | Neutral schedule contribution |
+
+<Warning>
+Courses with extensive missing data (e.g., new courses, new professors) will gravitate toward average scores. They may be ranked lower than courses with rich historical data.
+</Warning>
+
+## Normalization Function
+
+All score components use the same normalization function (from `scoring.ts:13-16`):
+
+```javascript
+function normalize(value, min, max) {
+  if (max === min) return 0.5;
+  return Math.max(0, Math.min(1, (value - min) / (max - min)));
+}
+```
+
+This ensures:
+- Values are clamped to the range [0, 1]
+- If `max === min`, return 0.5 to avoid division by zero
+- Values below `min` are set to 0
+- Values above `max` are set to 1
+
+## Ranking Courses
+
+After scoring, courses are ranked by their composite score in descending order (highest scores first). This is done by the `rankCourses` function in `scoring.ts:123-125`:
+
+```javascript
+function rankCourses(scoredCourses) {
+  return [...scoredCourses].sort((a, b) => b.score - a.score);
+}
+```
+
+The top-ranked courses appear first in your recommendations list.
+
+## Customizing for Your Goals
+
+Now that you understand how scores are calculated, you can adjust your preferences to match your goals:
+
+- **Boost GPA:** Increase `weight_gpa` and `weight_difficulty` to favor easier courses
+- **Learn from the best:** Increase `weight_professor` and `weight_would_take_again`
+- **Graduate faster:** Increase `weight_requirement` to prioritize degree requirements
+- **Manage your schedule:** Increase `weight_schedule` and set specific `preferred_times`
+
+Refer to the [Customizing Preferences](/guides/customizing-preferences) guide for detailed examples and configuration tips.

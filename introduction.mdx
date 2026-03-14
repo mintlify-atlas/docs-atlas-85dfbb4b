@@ -1,0 +1,104 @@
+---
+title: Introduction
+description: AI-powered course planning for Texas A&M CS students
+---
+
+Sift is a course planning platform built specifically for Computer Science students at Texas A&M University. It combines grade distributions, professor ratings, and your academic history to deliver personalized course recommendations.
+
+## What is Sift?
+
+Sift helps CS students answer the critical question: **"What courses should I take next semester?"**
+
+Instead of manually cross-referencing Anex grade distributions, RateMyProfessors ratings, prerequisite chains, and your degree plan, Sift does the heavy lifting for you. Upload your transcript, adjust your preferences, and get ranked recommendations tailored to your academic goals.
+
+## Who is it for?
+
+Sift is designed for:
+
+<CardGroup cols={2}>
+  <Card title="CS Undergrads" icon="graduation-cap">
+    Find courses that fit your schedule, match your skill level, and keep you on track for graduation
+  </Card>
+  <Card title="Contributors" icon="code">
+    Open-source developers who want to improve course planning tools or learn fullstack development
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### Personalized Recommendations
+
+Sift analyzes multiple data sources to score and rank courses:
+
+- **Grade distributions** from Anex (historical A/B/C/D/F rates by professor)
+- **Professor ratings** from RateMyProfessors (quality, difficulty, "would take again" percentage)
+- **Prerequisite checking** based on your completed courses
+- **Degree plan tracking** to prioritize core requirements, track electives, and capstone courses
+
+### Transcript Parsing
+
+Upload your official TAMU transcript (PDF) and Sift automatically extracts your completed courses using Claude API. No manual data entry required.
+
+<Note>
+Transcript parsing uses Claude Haiku for fast, accurate extraction. The PDF text is sent to Claude with strict system instructions to extract only course data.
+</Note>
+
+### Customizable Scoring
+
+Adjust how much weight you give to different factors:
+
+- **GPA impact** — prioritize courses with high historical grade averages
+- **Professor quality** — favor highly-rated instructors
+- **Difficulty** — avoid or embrace challenging courses
+- **Degree requirements** — boost core courses vs. electives
+
+Your preferences are saved to your profile and applied to all recommendations.
+
+### Real Course Data
+
+Sift scrapes live data from:
+
+- **Anex** — grade distributions for all CSCE courses since 2015
+- **RateMyProfessors** — ratings for 100+ CS department faculty
+
+Data is refreshed via the scraper script (see [Setup](/setup) for details).
+
+## How It Works
+
+<Steps>
+  <Step title="Sign up">
+    Create an account using Clerk authentication (email or social login)
+  </Step>
+  <Step title="Upload your transcript">
+    Drop your TAMU transcript PDF into the upload zone. Sift parses it in seconds using Claude API.
+  </Step>
+  <Step title="View recommendations">
+    See a ranked list of courses you're eligible for next semester, scored by GPA, professor quality, and degree plan priority.
+  </Step>
+  <Step title="Adjust preferences">
+    Fine-tune scoring weights to match your goals (e.g., prioritize easier courses or highly-rated professors).
+  </Step>
+</Steps>
+
+## Technology Stack
+
+Sift is built with modern web technologies:
+
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | Next.js 16 (App Router), TypeScript, Tailwind CSS v4, shadcn/ui, TanStack Query |
+| **Backend** | Express.js (TypeScript), Clerk for auth |
+| **Database** | Supabase (PostgreSQL) |
+| **AI** | Claude API (Anthropic) for transcript parsing |
+| **Data Sources** | Anex grade distributions, RateMyProfessors GraphQL API |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get started as a user — sign up and get your first recommendations in under 2 minutes
+  </Card>
+  <Card title="Local Setup" icon="wrench" href="/setup">
+    Set up Sift locally for development — install dependencies, configure environment variables, and run the scraper
+  </Card>
+</CardGroup>

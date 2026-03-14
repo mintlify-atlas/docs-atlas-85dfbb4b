@@ -1,0 +1,286 @@
+---
+title: Recommendations API
+description: AI-powered personalized course recommendations based on degree requirements and user preferences
+---
+
+## Get Course Recommendations
+
+<div className="api-method">
+  <div className="api-method-badge post">POST</div>
+  <code>/api/recommendations</code>
+</div>
+
+Generate personalized course recommendations based on your major, completed courses, preferences, and degree requirements. This endpoint uses intelligent scoring to rank courses by GPA potential, professor quality, degree requirement fit, and schedule preferences.
+
+### Request Body
+
+<ParamField body="major" type="string" optional default="CS">
+  Major code (e.g., "CS", "CPEN", "MATH"). Maximum 10 characters.
+</ParamField>
+
+<ParamField body="completed_courses" type="string[]" default="[]">
+  Array of completed course codes (e.g., ["CSCE 121", "MATH 151"]). Maximum 200 courses, each up to 20 characters.
+</ParamField>
+
+<ParamField body="in_progress_courses" type="string[]" default="[]">
+  Array of courses currently in progress. These satisfy prerequisites for next semester. Maximum 50 courses.
+</ParamField>
+
+<ParamField body="preferences" type="object" optional>
+  User preference weights for the recommendation algorithm. All weights should be between 0 and 1.
+  
+  <Expandable title="Preference fields">
+    <ParamField body="weight_gpa" type="number" default="0.25">
+      Weight for GPA optimization (0-1)
+    </ParamField>
+    
+    <ParamField body="weight_professor" type="number" default="0.20">
+      Weight for professor rating (0-1)
+    </ParamField>
+    
+    <ParamField body="weight_would_take_again" type="number" default="0.15">
+      Weight for "would take again" percentage (0-1)
+    </ParamField>
+    
+    <ParamField body="weight_difficulty" type="number" default="0.15">
+      Weight for difficulty penalty (0-1)
+    </ParamField>
+    
+    <ParamField body="weight_requirement" type="number" default="0.15">
+      Weight for degree requirement priority (0-1)
+    </ParamField>
+    
+    <ParamField body="weight_schedule" type="number" default="0.10">
+      Weight for schedule fit (0-1)
+    </ParamField>
+    
+    <ParamField body="min_credits" type="number" default="12">
+      Minimum credit hours per semester
+    </ParamField>
+    
+    <ParamField body="max_credits" type="number" default="18">
+      Maximum credit hours per semester
+    </ParamField>
+    
+    <ParamField body="preferred_times" type="string[]" default='["morning", "afternoon"]'>
+      Preferred class times: "morning", "afternoon", or "evening"
+    </ParamField>
+    
+    <ParamField body="excluded_courses" type="string[]" default="[]">
+      Course codes to exclude from recommendations
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="semester" type="string" default="Fall 2026">
+  Target semester for recommendations (e.g., "Fall 2026", "Spring 2027"). Maximum 20 characters.
+</ParamField>
+
+### Response
+
+Returns an array of scored course recommendations, ranked by total score.
+
+<ResponseField name="data" type="ScoredCourse[]">
+  Array of recommended courses with scoring breakdown
+  
+  <Expandable title="ScoredCourse properties">
+    <ResponseField name="course" type="Course">
+      Full course object (see Courses API for schema)
+    </ResponseField>
+    
+    <ResponseField name="professor" type="Professor | null">
+      Professor object if available, including RateMyProfessor data
+    </ResponseField>
+    
+    <ResponseField name="grade_distribution" type="GradeDistribution | null">
+      Most recent grade distribution for this course-professor combination
+    </ResponseField>
+    
+    <ResponseField name="section" type="Section | null">
+      Section information for the target semester, if available
+    </ResponseField>
+    
+    <ResponseField name="score" type="number">
+      Total weighted score (0-100)
+    </ResponseField>
+    
+    <ResponseField name="breakdown" type="ScoreBreakdown">
+      Detailed score breakdown
+      
+      <Expandable title="Breakdown fields">
+        <ResponseField name="gpa_score" type="number">
+          Score based on historical GPA
+        </ResponseField>
+        
+        <ResponseField name="professor_score" type="number">
+          Score based on RateMyProfessor rating
+        </ResponseField>
+        
+        <ResponseField name="would_take_again_score" type="number">
+          Score based on "would take again" percentage
+        </ResponseField>
+        
+        <ResponseField name="difficulty_penalty" type="number">
+          Penalty based on course difficulty
+        </ResponseField>
+        
+        <ResponseField name="requirement_bonus" type="number">
+          Bonus for fulfilling degree requirements
+        </ResponseField>
+        
+        <ResponseField name="schedule_fit" type="number">
+          Score based on schedule preferences
+        </ResponseField>
+        
+        <ResponseField name="total" type="number">
+          Total weighted score
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    
+    <ResponseField name="reasoning" type="string">
+      Human-readable explanation of the recommendation
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="error" type="string | null">
+  Error message if request failed, otherwise null
+</ResponseField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl -X POST "https://api.sift.app/api/recommendations" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "major": "CS",
+    "completed_courses": ["CSCE 121", "MATH 151"],
+    "in_progress_courses": ["CSCE 221"],
+    "preferences": {
+      "weight_gpa": 0.3,
+      "weight_professor": 0.25
+    },
+    "semester": "Fall 2026"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.sift.app/api/recommendations', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    major: 'CS',
+    completed_courses: ['CSCE 121', 'MATH 151'],
+    in_progress_courses: ['CSCE 221'],
+    preferences: {
+      weight_gpa: 0.3,
+      weight_professor: 0.25
+    },
+    semester: 'Fall 2026'
+  })
+});
+const { data, error } = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://api.sift.app/api/recommendations',
+    json={
+        'major': 'CS',
+        'completed_courses': ['CSCE 121', 'MATH 151'],
+        'in_progress_courses': ['CSCE 221'],
+        'preferences': {
+            'weight_gpa': 0.3,
+            'weight_professor': 0.25
+        },
+        'semester': 'Fall 2026'
+    }
+)
+result = response.json()
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": [
+    {
+      "course": {
+        "id": "course-123",
+        "department": "CSCE",
+        "number": "310",
+        "name": "Database Systems",
+        "credits": 3,
+        "description": "...",
+        "prereqs": [["CSCE 221"]],
+        "coreqs": [],
+        "semesters_offered": ["Fall", "Spring"]
+      },
+      "professor": {
+        "id": "prof-456",
+        "name": "Dr. Johnson",
+        "department": "CSCE",
+        "rmp_id": "12345",
+        "rmp_rating": 4.5,
+        "rmp_difficulty": 3.2,
+        "rmp_would_take_again": 85,
+        "rmp_tags": ["Tough grader", "Caring"]
+      },
+      "grade_distribution": {
+        "id": "grade-789",
+        "course_id": "course-123",
+        "professor_id": "prof-456",
+        "semester": "Spring 2025",
+        "a_pct": 42.5,
+        "b_pct": 35.0,
+        "c_pct": 15.0,
+        "d_pct": 5.0,
+        "f_pct": 2.5,
+        "q_pct": 0.0,
+        "avg_gpa": 3.1,
+        "enrollment": 120
+      },
+      "section": {
+        "id": "sec-999",
+        "course_id": "course-123",
+        "semester": "Fall 2026",
+        "professor_id": "prof-456",
+        "time_slot": "10:00-11:15",
+        "days": "TR",
+        "location": "ZACH 310",
+        "capacity": 150,
+        "enrolled": 45
+      },
+      "score": 87.3,
+      "breakdown": {
+        "gpa_score": 82.0,
+        "professor_score": 90.0,
+        "would_take_again_score": 85.0,
+        "difficulty_penalty": -10.0,
+        "requirement_bonus": 15.0,
+        "schedule_fit": 10.0,
+        "total": 87.3
+      },
+      "reasoning": "Highly recommended - fulfills core requirement with excellent professor rating (4.5/5.0) and strong grade distribution (avg GPA: 3.1)"
+    }
+  ],
+  "error": null
+}
+```
+
+<Note>
+  **How it works:** The algorithm filters courses by prerequisites, semester availability, and excludes completed/in-progress courses. It then scores each eligible course-professor combination using your preference weights and ranks them by total score.
+</Note>
+
+<Note>
+  In-progress courses satisfy prerequisites for the next semester, allowing you to see recommendations that build on your current coursework.
+</Note>
+
+<Warning>
+  Returns an empty array if all degree requirements are satisfied or no courses meet the eligibility criteria.
+</Warning>

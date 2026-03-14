@@ -1,0 +1,302 @@
+---
+title: "AI Course Recommendations"
+description: "Learn how Sift's multi-factor scoring algorithm ranks courses based on GPA, professor ratings, degree requirements, and schedule preferences"
+---
+
+## Overview
+
+Sift uses a sophisticated multi-factor scoring algorithm to recommend the best courses for you each semester. The recommendation engine considers historical grade data, professor ratings from RateMyProfessors, your degree requirements, prerequisite chains, and schedule preferences to generate personalized course rankings.
+
+## How It Works
+
+The recommendation system follows a four-step process:
+
+<CardGroup cols={2}>
+  <Card title="Filter Eligible Courses" icon="filter">
+    Excludes completed/in-progress courses and checks prerequisite satisfaction
+  </Card>
+  <Card title="Score Each Course" icon="calculator">
+    Applies multi-factor scoring based on 6 weighted components
+  </Card>
+  <Card title="Handle Equivalencies" icon="arrows-rotate">
+    Recognizes transfer credits and course substitutions
+  </Card>
+  <Card title="Rank by Score" icon="ranking-star">
+    Sorts courses by composite score to show best matches first
+  </Card>
+</CardGroup>
+
+## Multi-Factor Scoring Algorithm
+
+Each course receives a composite score based on six weighted factors. The algorithm is implemented in `server/src/services/scoring.ts:27-88`.
+
+### Scoring Components
+
+#### 1. GPA Score (Default Weight: 0.25)
+
+Normalized from historical average GPA for the course:
+
+```typescript
+// Normalization formula from scoring.ts:44
+gpaScore = normalize(gradeDistribution.avg_gpa, 1.5, 4.0)
+```
+
+- **Range**: GPA between 1.5 and 4.0 is mapped to 0.0-1.0
+- **Source**: Historical grade distributions from `grade_distributions` table
+- **Example**: A course with 3.5 avg GPA = 0.8 normalized score
+
+<Note>
+If no grade distribution data exists for a course, it defaults to 0.5 (neutral score).
+</Note>
+
+#### 2. Professor Rating (Default Weight: 0.20)
+
+Based on RateMyProfessors overall rating:
+
+```typescript
+// Normalization from scoring.ts:50
+professorScore = normalize(professor.rmp_rating, 1.0, 5.0)
+```
+
+- **Range**: RMP ratings from 1.0 to 5.0 mapped to 0.0-1.0
+- **Source**: `professors.rmp_rating` field
+- **Example**: 4.2/5 RMP rating = 0.8 normalized score
+
+#### 3. Would Take Again (Default Weight: 0.15)
+
+Percentage of students who would retake the professor:
+
+```typescript
+// Normalization from scoring.ts:53
+wouldTakeAgainScore = normalize(professor.rmp_would_take_again, 0, 100)
+```
+
+- **Range**: 0-100% mapped to 0.0-1.0
+- **Source**: `professors.rmp_would_take_again` field
+- **Example**: 75% would take again = 0.75 score
+
+#### 4. Difficulty Penalty (Default Weight: 0.15)
+
+Courses with higher difficulty receive a penalty (subtracted from total):
+
+```typescript
+// Normalization from scoring.ts:56
+difficultyPenalty = normalize(professor.rmp_difficulty, 1.0, 5.0)
+```
+
+- **Range**: Difficulty 1.0-5.0 mapped to 0.0-1.0
+- **Applied as**: Negative contribution (subtracted in final score)
+- **Example**: 4.0/5 difficulty = 0.75 penalty
+
+<Tip>
+The difficulty weight is subtracted in the final calculation, so easier courses score higher. If you prefer challenging courses, you can adjust this weight to 0 or make it positive in your preferences.
+</Tip>
+
+#### 5. Requirement Bonus (Default Weight: 0.15)
+
+Courses that fulfill degree requirements receive priority boosts:
+
+```typescript
+// Priority logic from scoring.ts:64-71
+if (req.type === "core" || req.type === "capstone") {
+  requirementBonus = 1.0;  // Highest priority
+} else if (req.type === "lab" || req.type === "math" || req.type === "science") {
+  requirementBonus = 0.8;  // Medium priority
+} else {
+  requirementBonus = 0.5;  // Low priority (electives)
+}
+```
+
+- **Core/Capstone**: 1.0 bonus (highest priority)
+- **Lab/Math/Science**: 0.8 bonus
+- **Electives**: 0.5 bonus
+- **Not in degree plan**: 0.0 bonus
+
+#### 6. Schedule Fit (Default Weight: 0.10)
+
+Matches course times with your preferred time slots:
+
+```typescript
+// Time matching from scoring.ts:77-79
+const bucket = getTimeBucket(section.time_slot);  // morning/afternoon/evening
+scheduleFit = preferences.preferred_times.includes(bucket) ? 1.0 : 0.2;
+```
+
+- **Matching preferred time**: 1.0 score
+- **Non-preferred time**: 0.2 score
+- **Time buckets**: Morning (before 12pm), Afternoon (12-5pm), Evening (after 5pm)
+
+### Final Score Calculation
+
+The composite score is computed as:
+
+```typescript
+// Final formula from scoring.ts:82-88
+total = 
+  preferences.weight_gpa * gpaScore +
+  preferences.weight_professor * professorScore +
+  preferences.weight_would_take_again * wouldTakeAgainScore -
+  preferences.weight_difficulty * difficultyPenalty +
+  preferences.weight_requirement * requirementBonus +
+  preferences.weight_schedule * scheduleFit;
+```
+
+<Accordion title="Example Score Calculation">
+  Given default weights and these values:
+  - GPA Score: 0.8 (3.5 avg GPA)
+  - Professor Rating: 0.8 (4.2/5 RMP)
+  - Would Take Again: 0.75 (75%)
+  - Difficulty: 0.6 (3.0/5 difficulty)
+  - Requirement: 1.0 (core course)
+  - Schedule: 1.0 (matches preferred time)
+
+  **Calculation:**
+  ```
+  0.25 × 0.8 = 0.200  (GPA)
+  0.20 × 0.8 = 0.160  (Professor)
+  0.15 × 0.75 = 0.113 (Would Take Again)
+  0.15 × 0.6 = -0.090 (Difficulty penalty)
+  0.15 × 1.0 = 0.150  (Requirement)
+  0.10 × 1.0 = 0.100  (Schedule)
+  ────────────────────
+  Total Score = 0.633
+  ```
+</Accordion>
+
+## Prerequisite Validation
+
+Before scoring, Sift filters out courses you're not eligible for. The prerequisite system supports complex AND/OR logic:
+
+```typescript
+// Prerequisite check from recommendations.ts:144-150
+prereqReady = eligibleCourses.filter((course) => {
+  if (!course.prereqs || course.prereqs.length === 0) return true;
+  // prereqs is array of arrays (OR of AND groups)
+  return course.prereqs.some((group) =>
+    group.every((prereq) => prereqSatisfiedSet.has(prereq.toUpperCase()))
+  );
+});
+```
+
+### Prerequisite Structure
+
+- **Array of arrays**: `[["CSCE 121"], ["CSCE 110", "ENGR 102"]]`
+- **Outer level = OR**: Satisfy any one group
+- **Inner level = AND**: Must complete all courses in a group
+
+<Note>
+Both completed and in-progress courses count toward prerequisite satisfaction for planning the next semester.
+</Note>
+
+## Semester Filtering
+
+Courses are filtered by when they're offered:
+
+```typescript
+// From recommendations.ts:153-158
+const season = semester.split(" ")[0];  // "Fall 2026" → "Fall"
+semesterReady = prereqReady.filter((course) => {
+  if (!course.semesters_offered || course.semesters_offered.length === 0) return true;
+  return course.semesters_offered.some(s => s.toLowerCase().startsWith(season.toLowerCase()));
+});
+```
+
+## Equivalency Handling
+
+Sift recognizes transfer credits and course substitutions defined in your degree plan:
+
+```typescript
+// From recommendations.ts:66-79
+for (const [canonical, equivs] of Object.entries(req.equivalents)) {
+  if (excludedSet.has(canonical.toUpperCase())) {
+    // If canonical course completed, mark all equivalents as satisfied
+    for (const eq of equivs) satisfiedCourses.add(eq.toUpperCase());
+  } else {
+    // If any equivalent completed, mark canonical as satisfied
+    for (const eq of equivs) {
+      if (excludedSet.has(eq.toUpperCase())) {
+        satisfiedCourses.add(canonical.toUpperCase());
+        break;
+      }
+    }
+  }
+}
+```
+
+This ensures transfer courses like "ENGR 111" properly substitute for "CSCE 111" in your degree progress.
+
+## Customizing Weights
+
+You can adjust the scoring weights in your user preferences. Default weights are defined in `types/index.ts:114-125`:
+
+```typescript
+DEFAULT_PREFERENCES = {
+  weight_gpa: 0.25,
+  weight_professor: 0.20,
+  weight_would_take_again: 0.15,
+  weight_difficulty: 0.15,
+  weight_requirement: 0.15,
+  weight_schedule: 0.10,
+}
+```
+
+<Tip>
+**Customization Examples:**
+- Prioritize graduating on time: Increase `weight_requirement` to 0.30
+- Prefer easy courses: Increase `weight_difficulty` to 0.25
+- Focus on good professors: Increase `weight_professor` and `weight_would_take_again` to 0.25 each
+- Optimize schedule: Increase `weight_schedule` to 0.20
+</Tip>
+
+## API Endpoint
+
+**POST** `/api/recommendations`
+
+### Request Body
+
+```json
+{
+  "major": "CS",
+  "completed_courses": ["CSCE 121", "MATH 151"],
+  "in_progress_courses": ["CSCE 221"],
+  "preferences": {
+    "weight_gpa": 0.30,
+    "weight_professor": 0.25
+  },
+  "semester": "Fall 2026"
+}
+```
+
+### Response
+
+```json
+{
+  "data": [
+    {
+      "course": { "department": "CSCE", "number": "310", "name": "Database Systems" },
+      "professor": { "name": "Dr. Smith", "rmp_rating": 4.2 },
+      "grade_distribution": { "avg_gpa": 3.5, "a_pct": 0.45 },
+      "section": { "time_slot": "10:00", "days": "MWF" },
+      "score": 0.633,
+      "breakdown": {
+        "gpa_score": 0.8,
+        "professor_score": 0.8,
+        "would_take_again_score": 0.75,
+        "difficulty_penalty": 0.6,
+        "requirement_bonus": 1.0,
+        "schedule_fit": 1.0,
+        "total": 0.633
+      },
+      "reasoning": "avg GPA 3.50 (45% A rate) · Dr. Smith: 4.2/5 RMP · core requirement"
+    }
+  ],
+  "error": null
+}
+```
+
+## Implementation Details
+
+- **File**: `server/src/routes/recommendations.ts`
+- **Scoring logic**: `server/src/services/scoring.ts`
+- **Validation**: Zod schema limits 200 completed courses, 50 in-progress
+- **Performance**: Parallel queries for grade distributions and sections

@@ -1,0 +1,286 @@
+---
+title: Courses API
+description: Endpoints for searching and retrieving course information
+---
+
+## List Courses
+
+<div className="api-method">
+  <div className="api-method-badge get">GET</div>
+  <code>/api/courses</code>
+</div>
+
+Retrieve a list of courses with optional filtering by department, search term, or semester.
+
+### Query Parameters
+
+<ParamField query="department" type="string" optional>
+  Filter courses by department code (e.g., "CSCE", "MATH"). Case-insensitive.
+</ParamField>
+
+<ParamField query="search" type="string" optional>
+  Search courses by name, department, or course number. Performs case-insensitive partial matching.
+</ParamField>
+
+<ParamField query="semester" type="string" optional>
+  Filter courses offered in a specific semester (e.g., "Fall", "Spring", "Summer").
+</ParamField>
+
+### Response
+
+Returns an array of course objects ordered by department and course number.
+
+<ResponseField name="data" type="Course[]">
+  Array of course objects
+  
+  <Expandable title="Course object properties">
+    <ResponseField name="id" type="string">
+      UUID identifier for the course
+    </ResponseField>
+    
+    <ResponseField name="department" type="string">
+      Department code (e.g., "CSCE")
+    </ResponseField>
+    
+    <ResponseField name="number" type="string">
+      Course number (e.g., "121", "310")
+    </ResponseField>
+    
+    <ResponseField name="name" type="string">
+      Full course name
+    </ResponseField>
+    
+    <ResponseField name="credits" type="number">
+      Credit hours for the course
+    </ResponseField>
+    
+    <ResponseField name="description" type="string">
+      Course description
+    </ResponseField>
+    
+    <ResponseField name="prereqs" type="string[][]">
+      Prerequisites as array of arrays (OR of AND groups). Each inner array represents courses that must all be completed (AND), and any one group satisfies the requirement (OR).
+    </ResponseField>
+    
+    <ResponseField name="coreqs" type="string[]">
+      Corequisite courses that must be taken concurrently
+    </ResponseField>
+    
+    <ResponseField name="semesters_offered" type="string[]">
+      Semesters when the course is typically offered
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="error" type="string | null">
+  Error message if request failed, otherwise null
+</ResponseField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl -X GET "https://api.sift.app/api/courses?department=CSCE&semester=Fall"
+```
+
+```javascript JavaScript
+const response = await fetch(
+  'https://api.sift.app/api/courses?department=CSCE&semester=Fall'
+);
+const { data, error } = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    'https://api.sift.app/api/courses',
+    params={'department': 'CSCE', 'semester': 'Fall'}
+)
+result = response.json()
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "department": "CSCE",
+      "number": "121",
+      "name": "Introduction to Program Design and Concepts",
+      "credits": 4,
+      "description": "Computation to facilitate problem solving...",
+      "prereqs": [],
+      "coreqs": [],
+      "semesters_offered": ["Fall", "Spring"]
+    }
+  ],
+  "error": null
+}
+```
+
+---
+
+## Get Course by ID
+
+<div className="api-method">
+  <div className="api-method-badge get">GET</div>
+  <code>/api/courses/:id</code>
+</div>
+
+Retrieve detailed information about a specific course, including sections and grade distributions.
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  Course UUID. Must be a valid UUID format.
+</ParamField>
+
+### Response
+
+Returns a course object with embedded sections and grade distribution data.
+
+<ResponseField name="data" type="object">
+  Course object with additional fields
+  
+  <Expandable title="Properties">
+    <ResponseField name="id" type="string">
+      Course UUID
+    </ResponseField>
+    
+    <ResponseField name="department" type="string">
+      Department code
+    </ResponseField>
+    
+    <ResponseField name="number" type="string">
+      Course number
+    </ResponseField>
+    
+    <ResponseField name="name" type="string">
+      Course name
+    </ResponseField>
+    
+    <ResponseField name="credits" type="number">
+      Credit hours
+    </ResponseField>
+    
+    <ResponseField name="description" type="string">
+      Course description
+    </ResponseField>
+    
+    <ResponseField name="prereqs" type="string[][]">
+      Prerequisites structure
+    </ResponseField>
+    
+    <ResponseField name="coreqs" type="string[]">
+      Corequisites
+    </ResponseField>
+    
+    <ResponseField name="semesters_offered" type="string[]">
+      Available semesters
+    </ResponseField>
+    
+    <ResponseField name="sections" type="Section[]">
+      Array of sections for this course, including professor information
+    </ResponseField>
+    
+    <ResponseField name="grade_distributions" type="GradeDistribution[]">
+      Historical grade distributions with professor data
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="error" type="string | null">
+  Error message if request failed, otherwise null
+</ResponseField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl -X GET "https://api.sift.app/api/courses/123e4567-e89b-12d3-a456-426614174000"
+```
+
+```javascript JavaScript
+const response = await fetch(
+  'https://api.sift.app/api/courses/123e4567-e89b-12d3-a456-426614174000'
+);
+const { data, error } = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    'https://api.sift.app/api/courses/123e4567-e89b-12d3-a456-426614174000'
+)
+result = response.json()
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "department": "CSCE",
+    "number": "121",
+    "name": "Introduction to Program Design and Concepts",
+    "credits": 4,
+    "description": "Computation to facilitate problem solving...",
+    "prereqs": [],
+    "coreqs": [],
+    "semesters_offered": ["Fall", "Spring"],
+    "sections": [
+      {
+        "id": "sec-123",
+        "course_id": "123e4567-e89b-12d3-a456-426614174000",
+        "semester": "Fall 2026",
+        "professor_id": "prof-456",
+        "time_slot": "10:00-11:15",
+        "days": "MWF",
+        "location": "HRBB 124",
+        "capacity": 200,
+        "enrolled": 185,
+        "professors": {
+          "id": "prof-456",
+          "name": "Dr. Smith",
+          "department": "CSCE"
+        }
+      }
+    ],
+    "grade_distributions": [
+      {
+        "id": "grade-789",
+        "course_id": "123e4567-e89b-12d3-a456-426614174000",
+        "professor_id": "prof-456",
+        "semester": "Spring 2025",
+        "a_pct": 45.2,
+        "b_pct": 30.1,
+        "c_pct": 15.3,
+        "d_pct": 5.2,
+        "f_pct": 2.1,
+        "q_pct": 2.1,
+        "avg_gpa": 3.15,
+        "enrollment": 195,
+        "professors": {
+          "name": "Dr. Smith"
+        }
+      }
+    ]
+  },
+  "error": null
+}
+```
+
+<Note>
+  The `id` parameter must be a valid UUID. Invalid formats will return a 400 error.
+</Note>
+
+<Warning>
+  Returns 404 if the course is not found in the database.
+</Warning>

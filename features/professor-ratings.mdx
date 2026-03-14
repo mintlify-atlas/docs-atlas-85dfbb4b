@@ -1,0 +1,444 @@
+---
+title: "Professor Ratings Integration"
+description: "Explore how Sift integrates RateMyProfessors data into course recommendations and professor search"
+---
+
+## Overview
+
+Sift integrates professor ratings from RateMyProfessors (RMP) to help students choose courses taught by highly-rated instructors. The system stores RMP data in the database and uses three key metrics—overall rating, difficulty, and "would take again" percentage—in the recommendation scoring algorithm.
+
+## RateMyProfessors Metrics
+
+Sift tracks four RMP data points for each professor:
+
+<CardGroup cols={2}>
+  <Card title="Overall Rating" icon="star">
+    1-5 scale measuring overall teaching quality
+  </Card>
+  <Card title="Difficulty" icon="gauge">
+    1-5 scale indicating course difficulty (higher = harder)
+  </Card>
+  <Card title="Would Take Again" icon="thumbs-up">
+    Percentage of students who would retake the professor
+  </Card>
+  <Card title="Tags" icon="tags">
+    Student-submitted descriptors ("tough grader", "helpful", etc.)
+  </Card>
+</CardGroup>
+
+## Professor Data Model
+
+```typescript
+// From types/index.ts:25-34
+interface Professor {
+  id: string;                       // UUID
+  name: string;                     // e.g., "Dr. Jane Smith"
+  department: string;               // e.g., "CSCE"
+  rmp_id: string | null;            // RateMyProfessors ID
+  rmp_rating: number | null;        // 1.0-5.0 scale
+  rmp_difficulty: number | null;    // 1.0-5.0 scale
+  rmp_would_take_again: number | null; // 0-100 percentage
+  rmp_tags: string[];               // ["tough grader", "caring", "hilarious"]
+}
+```
+
+### Nullable RMP Fields
+
+All RMP fields are nullable because:
+- Not all professors have RMP profiles
+- New professors may not have ratings yet
+- Some universities aren't well-represented on RMP
+
+<Note>
+When RMP data is missing, Sift defaults to neutral scores (0.5) in the recommendation algorithm.
+</Note>
+
+## Role in Recommendations
+
+Professor ratings influence recommendations through three weighted factors:
+
+### 1. Overall Rating Score (Default Weight: 0.20)
+
+```typescript
+// From scoring.ts:48-51
+if (professor && professor.rmp_rating !== null) {
+  professorScore = normalize(professor.rmp_rating, 1.0, 5.0);
+}
+```
+
+- **Input range**: 1.0 to 5.0
+- **Normalized to**: 0.0 to 1.0
+- **Interpretation**: Higher is better
+- **Example**: 4.2/5 rating → 0.80 score
+
+### 2. Would Take Again Score (Default Weight: 0.15)
+
+```typescript
+// From scoring.ts:52-54
+if (professor.rmp_would_take_again !== null) {
+  wouldTakeAgainScore = normalize(professor.rmp_would_take_again, 0, 100);
+}
+```
+
+- **Input range**: 0 to 100 (percentage)
+- **Normalized to**: 0.0 to 1.0
+- **Interpretation**: Higher percentage → better score
+- **Example**: 75% would retake → 0.75 score
+
+### 3. Difficulty Penalty (Default Weight: 0.15)
+
+```typescript
+// From scoring.ts:55-58
+if (professor.rmp_difficulty !== null) {
+  difficultyPenalty = normalize(professor.rmp_difficulty, 1.0, 5.0);
+}
+```
+
+- **Input range**: 1.0 to 5.0
+- **Normalized to**: 0.0 to 1.0
+- **Applied as**: **Negative** contribution (subtracted in final score)
+- **Interpretation**: Higher difficulty → lower recommendation score
+- **Example**: 4.0/5 difficulty → 0.75 penalty
+
+<Accordion title="Why Difficulty is Subtracted">
+  In the final score calculation, difficulty is subtracted:
+
+  ```typescript
+  total = 
+    preferences.weight_professor * professorScore +
+    preferences.weight_would_take_again * wouldTakeAgainScore -
+    preferences.weight_difficulty * difficultyPenalty +  // ← Notice the minus sign
+    // ... other factors
+  ```
+
+  This means:
+  - Easy professors (low difficulty) → small penalty → higher score
+  - Hard professors (high difficulty) → large penalty → lower score
+
+  **To prefer challenging courses**: Set `weight_difficulty: 0` or make it positive by changing the formula.
+</Accordion>
+
+## Professor-Specific Recommendations
+
+Sift generates separate recommendations for each professor teaching a course:
+
+```typescript
+// From recommendations.ts:185-222
+for (const course of filtered) {
+  const courseGrades = grades.filter(g => g.course_id === course.id);
+  
+  // Group grade distributions by professor
+  const profGradesMap = new Map();
+  for (const g of courseGrades) {
+    const pid = g.professor_id || "__none__";
+    if (!profGradesMap.has(pid)) profGradesMap.set(pid, []);
+    profGradesMap.get(pid).push(g);
+  }
+  
+  // Score each professor separately
+  for (const [pid, profGrades] of profGradesMap) {
+    if (pid === "__none__") continue;
+    
+    const sortedGrades = [...profGrades].sort((a, b) =>
+      b.semester.localeCompare(a.semester)  // Most recent first
+    );
+    const bestGrade = sortedGrades[0];
+    const prof = bestGrade.professors;
+    
+    const section = courseSections.find(s => s.professor_id === pid);
+    
+    scored.push(scoreCourse(course, prof, bestGrade, section, userPrefs, remainingReqs));
+  }
+}
+```
+
+### Why Score Per-Professor?
+
+**Same course, different professors can have vastly different outcomes:**
+
+| Professor | RMP Rating | Avg GPA | Would Take Again | Composite Score |
+|-----------|------------|---------|------------------|------------------|
+| Dr. Smith | 4.5/5 | 3.2 | 85% | 0.72 |
+| Dr. Jones | 2.8/5 | 2.4 | 45% | 0.38 |
+
+By scoring each professor separately, students can choose **CSCE 310 with Dr. Smith** over **CSCE 310 with Dr. Jones**.
+
+## Grade Distribution + Professor Pairing
+
+Sift links grade distributions to professors to provide accurate GPA predictions:
+
+```typescript
+// From recommendations.ts:167-180
+const [gradesResult, sectionsResult] = await Promise.all([
+  supabase
+    .from("grade_distributions")
+    .select("*, professors(*)")
+    .in("course_id", courseIds),
+  supabase
+    .from("sections")
+    .select("*, professors(*)")
+    .in("course_id", courseIds)
+    .eq("semester", semester),
+]);
+```
+
+**Database schema:**
+```sql
+grade_distributions (
+  id UUID,
+  course_id UUID,
+  professor_id UUID,  -- Links to professors table
+  semester TEXT,
+  avg_gpa NUMERIC,
+  a_pct NUMERIC,
+  -- ...
+)
+```
+
+This allows Sift to show:
+- "CSCE 310 with Dr. Smith has a 3.5 avg GPA"
+- "CSCE 310 with Dr. Jones has a 2.4 avg GPA"
+
+Instead of just:
+- "CSCE 310 has a 2.95 avg GPA" (misleading average)
+
+## Professor Search API
+
+### List Professors
+
+**GET** `/api/professors?department=CSCE&search=Smith`
+
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "name": "Dr. Jane Smith",
+      "department": "CSCE",
+      "rmp_id": "123456",
+      "rmp_rating": 4.2,
+      "rmp_difficulty": 3.5,
+      "rmp_would_take_again": 75,
+      "rmp_tags": ["tough grader", "hilarious", "caring"]
+    }
+  ],
+  "error": null
+}
+```
+
+#### Query Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `department` | string | Filter by department (e.g., "CSCE") |
+| `search` | string | Search professor names (case-insensitive, uses `ILIKE`) |
+| `course_id` | UUID | Filter to professors who have taught this course |
+
+#### Course Filtering Logic
+
+```typescript
+// From professors.ts:38-56
+if (course_id && typeof course_id === "string" && data) {
+  if (!UUID_RE.test(course_id)) {
+    res.status(400).json({ error: "Invalid course_id format" });
+  }
+  
+  const { data: grades } = await supabase
+    .from("grade_distributions")
+    .select("professor_id")
+    .eq("course_id", course_id);
+  
+  if (grades) {
+    const profIds = new Set(grades.map(g => g.professor_id));
+    const filtered = data.filter(p => profIds.has(p.id));
+    res.json({ data: filtered, error: null });
+  }
+}
+```
+
+This returns only professors who have grade distribution data for the specified course.
+
+### Get Professor Details
+
+**GET** `/api/professors/:id`
+
+```json
+{
+  "data": {
+    "id": "uuid",
+    "name": "Dr. Jane Smith",
+    "department": "CSCE",
+    "rmp_id": "123456",
+    "rmp_rating": 4.2,
+    "rmp_difficulty": 3.5,
+    "rmp_would_take_again": 75,
+    "rmp_tags": ["tough grader", "hilarious", "caring"],
+    "grade_history": [
+      {
+        "id": "uuid",
+        "course_id": "uuid",
+        "semester": "Fall 2025",
+        "avg_gpa": 3.5,
+        "a_pct": 0.45,
+        "b_pct": 0.30,
+        "c_pct": 0.15,
+        "d_pct": 0.05,
+        "f_pct": 0.05,
+        "enrollment": 120,
+        "courses": {
+          "department": "CSCE",
+          "number": "310",
+          "name": "Database Systems"
+        }
+      }
+    ]
+  },
+  "error": null
+}
+```
+
+#### Grade History
+
+The endpoint includes:
+- All courses the professor has taught
+- Semester-by-semester grade distributions
+- Enrollment numbers
+- Sorted by most recent semester first
+
+```typescript
+// From professors.ts:75-82
+const [profResult, gradesResult] = await Promise.all([
+  supabase.from("professors").select("*").eq("id", id).single(),
+  supabase
+    .from("grade_distributions")
+    .select("*, courses(department, number, name)")
+    .eq("professor_id", id)
+    .order("semester", { ascending: false }),
+]);
+```
+
+## RMP Tags
+
+Sift stores student-submitted tags from RateMyProfessors:
+
+```typescript
+rmp_tags: string[];  // ["tough grader", "hilarious", "caring"]
+```
+
+### Common Tags
+
+**Positive:**
+- "caring", "helpful", "respected", "accessible"
+- "amazing lectures", "clear grading criteria"
+- "inspirational", "hilarious"
+
+**Negative:**
+- "tough grader", "lots of homework", "skip class? you won't pass"
+- "get ready to read", "participation matters"
+- "graded by few things", "test heavy"
+
+**Neutral:**
+- "gives good feedback", "lecture heavy"
+- "group projects", "extra credit"
+
+<Tip>
+Tags provide qualitative context beyond numerical ratings. A professor with a 4.0 rating and "tough grader" tag might be perfect for students who want rigor, while a 4.0 with "caring" might suit students who value support.
+</Tip>
+
+## Handling Missing RMP Data
+
+Many professors lack RMP profiles, especially:
+- New faculty members
+- Adjunct professors
+- Graduate teaching assistants
+- Professors at smaller universities
+
+### Default Scoring Behavior
+
+```typescript
+// From scoring.ts:35-40
+let gpaScore = 0.5;
+let professorScore = 0.5;
+let wouldTakeAgainScore = 0.5;
+let difficultyPenalty = 0.5;
+let requirementBonus = 0;
+let scheduleFit = 0.5;
+```
+
+All professor-related scores default to **0.5 (neutral)**, so:
+- Courses with no RMP data don't get unfairly penalized
+- Scoring is driven by other factors (GPA, requirements, schedule)
+- Missing data = neutral contribution (neither helps nor hurts)
+
+<Note>
+This design ensures new professors have a fair chance of being recommended based on grade distributions and degree requirements, even without RMP ratings.
+</Note>
+
+## Security & Input Validation
+
+### Professor Search Input Sanitization
+
+```typescript
+// From professors.ts:8-10
+function escapePostgrestValue(str: string): string {
+  return str.replace(/[%_\\,.*()]/g, "");
+}
+```
+
+Search queries are sanitized to prevent SQL injection via PostgREST wildcards:
+- Removes `%` (wildcard)
+- Removes `_` (single-char wildcard)
+- Removes `\\` (escape character)
+- Removes regex special chars
+
+### UUID Validation
+
+```typescript
+// From professors.ts:6
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+if (!UUID_RE.test(id)) {
+  res.status(400).json({ error: "Invalid ID format" });
+}
+```
+
+All professor and course IDs are validated before database queries.
+
+## Data Freshness
+
+RMP data should be periodically refreshed to stay current:
+
+<Accordion title="Recommended Update Strategy">
+  - **Nightly batch job**: Update all professors with RMP IDs
+  - **New professor detection**: Check for new RMP profiles monthly
+  - **Tag updates**: Refresh tags quarterly (they change less frequently)
+  - **Cache invalidation**: Clear recommendation cache after RMP updates
+  - **Manual overrides**: Allow admins to correct incorrect RMP linkages
+</Accordion>
+
+## Implementation Details
+
+- **Files**:
+  - `server/src/routes/professors.ts` - Professor search endpoints
+  - `server/src/services/scoring.ts` - RMP integration in scoring
+  - `server/src/types/index.ts` - Professor data model
+- **Database**: Supabase (PostgreSQL)
+- **RMP Integration**: Manual scraping or RMP API (if available)
+- **Scoring impact**: 50% of recommendation score (combined weight of rating, would take again, and difficulty)
+
+## Best Practices
+
+<Accordion title="For Students">
+  - Check both RMP ratings and grade distributions (high rating + low GPA may indicate easy grader vs. engaging teacher)
+  - Read RMP tags to understand teaching style beyond numbers
+  - Consider your preferences: Do you want challenging courses or high GPAs?
+  - Look at grade history across multiple semesters (one bad semester may be an outlier)
+</Accordion>
+
+<Accordion title="For Administrators">
+  - Verify RMP ID linkages are correct (common names cause mismatches)
+  - Handle edge cases: professors who change names, departments, or leave the university
+  - Respect professor privacy: consider allowing opt-out for displaying RMP data
+  - Monitor for rating manipulation or brigading
+  - Supplement RMP with internal course evaluations if available
+</Accordion>

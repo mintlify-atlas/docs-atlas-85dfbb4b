@@ -1,0 +1,442 @@
+---
+title: "Degree Progress Tracking"
+description: "Learn how Sift calculates degree completion, validates prerequisites, handles course equivalencies, and tracks credit requirements"
+---
+
+## Overview
+
+Sift's degree tracking system monitors your progress toward graduation by comparing completed courses against degree requirements. The system handles complex scenarios including course equivalencies, transfer credits, pick-type requirements ("complete N credits from this list"), and prerequisite chains.
+
+## Core Concepts
+
+<CardGroup cols={2}>
+  <Card title="Degree Plans" icon="map">
+    Structured requirements organized by category (core, electives, labs, etc.)
+  </Card>
+  <Card title="Equivalencies" icon="arrows-rotate">
+    Transfer credits and course substitutions that satisfy requirements
+  </Card>
+  <Card title="Selection Rules" icon="list-check">
+    "All" (must complete every course) vs "Pick" (complete N credits from list)
+  </Card>
+  <Card title="Credit Counting" icon="calculator">
+    Variable credit courses and per-category credit tracking
+  </Card>
+</CardGroup>
+
+## Degree Plan Structure
+
+Degree plans are stored in the `degree_plans` table and consist of requirement categories:
+
+```typescript
+// From types/index.ts:51-60
+interface DegreeRequirement {
+  type: "core" | "elective" | "lab" | "math" | "science" | "capstone";
+  category: string;                    // e.g., "Computer Science Core"
+  courses: string[];                   // e.g., ["CSCE 121", "CSCE 221"]
+  credits_needed: number;              // Total credits required for this category
+  equivalents?: Record<string, string[]>; // Course substitutions
+  selection_rule?: "all" | "pick";     // Default: "all"
+  track?: string;                      // Optional specialization track
+  credits_map?: Record<string, number>; // Override default 3-credit assumption
+}
+```
+
+### Requirement Types
+
+Sift categorizes requirements by type for prioritization in recommendations:
+
+| Type | Priority | Examples |
+|------|----------|----------|
+| `core` | Highest (1.0) | CSCE 121, CSCE 221, CSCE 310 |
+| `capstone` | Highest (1.0) | CSCE 482 (Senior Design) |
+| `lab` | Medium (0.8) | PHYS 206, CHEM 107 |
+| `math` | Medium (0.8) | MATH 151, MATH 152, MATH 304 |
+| `science` | Medium (0.8) | PHYS 206, CHEM 107, BIOL 111 |
+| `elective` | Low (0.5) | Technical electives, free electives |
+
+<Note>
+Priority values are used in the recommendation scoring algorithm (see `scoring.ts:64-71`).
+</Note>
+
+### Selection Rules
+
+#### "all" (default)
+
+Student must complete **every course** in the list:
+
+```json
+{
+  "category": "Computer Science Core",
+  "courses": ["CSCE 121", "CSCE 221", "CSCE 310"],
+  "credits_needed": 12,
+  "selection_rule": "all"
+}
+```
+
+#### "pick"
+
+Student must complete **enough courses to reach the credit requirement**:
+
+```json
+{
+  "category": "Technical Electives",
+  "courses": ["CSCE 314", "CSCE 315", "CSCE 410", "CSCE 411", "CSCE 420"],
+  "credits_needed": 9,
+  "selection_rule": "pick"
+}
+```
+
+Student can choose any 3 courses from this list to satisfy the 9-credit requirement.
+
+## Calculating Remaining Requirements
+
+The `/api/degree-plan/remaining` endpoint computes degree progress:
+
+### Request Example
+
+```json
+{
+  "major": "CS",
+  "completed_courses": ["CSCE 121", "MATH 151", "PHYS 206"],
+  "in_progress_courses": ["CSCE 221"]
+}
+```
+
+### Processing Logic
+
+For each requirement category, Sift:
+
+1. **Identifies completed courses** (including equivalents)
+2. **Identifies in-progress courses** (including equivalents)
+3. **Calculates credits completed and in-progress**
+4. **Determines if requirement is satisfied**
+5. **Returns remaining courses needed**
+
+```typescript
+// From degree-plan.ts:80-120
+for (const course of req.courses) {
+  if (completedSet.has(courseUpper)) {
+    // Direct match
+    completedFromCategory.push(course);
+    creditsCompleted += getCourseCredits(course, req);
+  } else if (inProgressSet.has(courseUpper)) {
+    // In-progress match
+    inProgressFromCategory.push(course);
+    creditsInProgress += getCourseCredits(course, req);
+  } else {
+    // Check equivalents
+    const equivs = req.equivalents?.[course];
+    const matchedCompleted = equivs?.find(eq => completedSet.has(eq.toUpperCase()));
+    
+    if (matchedCompleted) {
+      completedFromCategory.push(course);
+      equivalentMatches[course] = matchedCompleted;
+      creditsCompleted += getCourseCredits(matchedCompleted, req);
+    } else {
+      const matchedIP = equivs?.find(eq => inProgressSet.has(eq.toUpperCase()));
+      if (matchedIP) {
+        inProgressFromCategory.push(course);
+        equivalentMatches[course] = matchedIP;
+        creditsInProgress += getCourseCredits(matchedIP, req);
+      } else {
+        remainingCourses.push(course);
+      }
+    }
+  }
+}
+```
+
+### Satisfaction Logic
+
+#### For "all" requirements:
+
+```typescript
+// From degree-plan.ts:124-126
+isSatisfied = remainingCourses.length === 0 && inProgressFromCategory.length === 0;
+```
+
+All courses must be completed (not just in-progress).
+
+#### For "pick" requirements:
+
+```typescript
+// From degree-plan.ts:128-133
+isSatisfied = creditsCompleted >= req.credits_needed;
+if (isSatisfied) {
+  remainingCourses.length = 0;
+  inProgressFromCategory.length = 0;
+}
+```
+
+Once enough credits are completed, the requirement is satisfied and remaining courses are cleared.
+
+## Course Equivalencies
+
+Equivalencies allow transfer credits and course substitutions to satisfy requirements.
+
+### Equivalency Structure
+
+```json
+{
+  "category": "Computer Science Core",
+  "courses": ["CSCE 111", "CSCE 121"],
+  "equivalents": {
+    "CSCE 111": ["ENGR 111", "ECEN 111"],
+    "CSCE 121": ["ENGR 112"]
+  }
+}
+```
+
+- **Key**: Canonical course code (the "official" course)
+- **Value**: Array of equivalent courses that can substitute
+
+### Bidirectional Equivalency Handling
+
+Sift handles equivalencies in both directions:
+
+**Scenario 1**: Student completed equivalent, needs canonical
+
+```typescript
+// If student took "ENGR 111" but degree requires "CSCE 111"
+const equivs = req.equivalents?.["CSCE 111"];  // ["ENGR 111", "ECEN 111"]
+const match = equivs?.find(eq => completedSet.has("ENGR 111"));
+// → "CSCE 111" marked as satisfied
+```
+
+**Scenario 2**: Student completed canonical, took equivalent
+
+```typescript
+// From recommendations.ts:66-79
+for (const [canonical, equivs] of Object.entries(req.equivalents)) {
+  if (excludedSet.has(canonical.toUpperCase())) {
+    // Canonical completed — mark all equivalents as satisfied
+    for (const eq of equivs) satisfiedCourses.add(eq.toUpperCase());
+  }
+}
+```
+
+This prevents recommending "ENGR 111" if the student already completed "CSCE 111".
+
+<Accordion title="Example: Transfer Credit Equivalency">
+  **Degree Plan Requirement:**
+  ```json
+  {
+    "courses": ["CSCE 111", "CSCE 121"],
+    "equivalents": {
+      "CSCE 111": ["ENGR 111", "ECEN 111"]
+    }
+  }
+  ```
+
+  **Student completed:**
+  - `ENGR 111` (transfer credit from another university)
+
+  **Result:**
+  - `CSCE 111` is marked as satisfied
+  - `ENGR 111`, `ECEN 111`, and `CSCE 111` are excluded from recommendations
+  - `equivalent_matches` includes: `{"CSCE 111": "ENGR 111"}`
+</Accordion>
+
+## Variable Credit Courses
+
+Some courses have non-standard credit values (e.g., 1-credit labs, 4-credit math courses).
+
+### Default Credit Assumption
+
+```typescript
+// From degree-plan.ts:75-77
+function getCourseCredits(code: string, req: any): number {
+  return req.credits_map?.[code] ?? 3;  // Default to 3 if not specified
+}
+```
+
+### Credit Override Map
+
+```json
+{
+  "category": "Mathematics",
+  "courses": ["MATH 151", "MATH 152", "MATH 304"],
+  "credits_needed": 12,
+  "credits_map": {
+    "MATH 151": 4,
+    "MATH 152": 4,
+    "MATH 304": 3
+  }
+}
+```
+
+Without `credits_map`, Sift would assume each course is 3 credits (total 9), but with the map, it correctly counts 11 credits.
+
+## Total Progress Calculation
+
+Sift computes overall degree progress by summing category-level progress:
+
+```typescript
+// From degree-plan.ts:147-164
+const totalRequired = plan.requirements.reduce((sum, r) => sum + r.credits_needed, 0);
+
+// Cap per-category credits at credits_needed to avoid over-counting
+const totalCompleted = remaining.reduce(
+  (sum, r) => sum + Math.min(r.credits_completed, r.credits_needed), 0
+);
+
+const totalInProgress = remaining.reduce(
+  (sum, r) => sum + Math.min(
+    r.credits_in_progress,
+    Math.max(0, r.credits_needed - r.credits_completed)
+  ), 0
+);
+
+const progress_pct = totalRequired > 0
+  ? Math.round((totalCompleted / totalRequired) * 100)
+  : 0;
+```
+
+### Why Cap Credits?
+
+For "pick" requirements, a student might complete more courses than needed:
+
+**Example:**
+- Requirement: 9 credits from technical electives
+- Student completed: CSCE 314 (3), CSCE 315 (3), CSCE 410 (3), CSCE 411 (3) = 12 credits
+
+Without capping, this would count as 12 credits toward the degree, inflating progress. By capping at `credits_needed` (9), Sift correctly counts only the required 9 credits.
+
+## API Endpoints
+
+### Get Degree Plan
+
+**GET** `/api/degree-plan/:major?catalog_year=2025`
+
+```json
+{
+  "data": {
+    "id": "uuid",
+    "major": "CS",
+    "catalog_year": "2025",
+    "requirements": [
+      {
+        "type": "core",
+        "category": "Computer Science Core",
+        "courses": ["CSCE 121", "CSCE 221", "CSCE 310"],
+        "credits_needed": 12,
+        "selection_rule": "all"
+      }
+    ]
+  },
+  "error": null
+}
+```
+
+### Calculate Remaining Requirements
+
+**POST** `/api/degree-plan/remaining`
+
+#### Request
+
+```json
+{
+  "major": "CS",
+  "completed_courses": ["CSCE 121", "MATH 151"],
+  "in_progress_courses": ["CSCE 221"]
+}
+```
+
+#### Response
+
+```json
+{
+  "data": {
+    "plan": { /* full degree plan */ },
+    "remaining": [
+      {
+        "type": "core",
+        "category": "Computer Science Core",
+        "courses": ["CSCE 121", "CSCE 221", "CSCE 310"],
+        "credits_needed": 12,
+        "remaining_courses": ["CSCE 310"],
+        "completed_courses": ["CSCE 121"],
+        "in_progress_courses": ["CSCE 221"],
+        "credits_completed": 4,
+        "credits_in_progress": 4,
+        "is_satisfied": false,
+        "equivalent_matches": {}
+      }
+    ],
+    "total_credits_required": 120,
+    "total_credits_completed": 48,
+    "total_credits_in_progress": 12,
+    "progress_pct": 40
+  },
+  "error": null
+}
+```
+
+## Prerequisite Validation
+
+While degree tracking focuses on *requirements*, prerequisite validation ensures students can *register* for courses.
+
+### Prerequisite Data Structure
+
+```typescript
+// From types/index.ts:8
+prereqs: string[][];  // Array of arrays (OR of AND groups)
+```
+
+**Example:**
+```json
+{
+  "department": "CSCE",
+  "number": "310",
+  "prereqs": [["CSCE 221"], ["CSCE 222", "MATH 304"]]
+}
+```
+
+**Interpretation:** (CSCE 221) OR (CSCE 222 AND MATH 304)
+
+### Validation Logic
+
+```typescript
+// From recommendations.ts:144-150
+prereqReady = eligibleCourses.filter((course) => {
+  if (!course.prereqs || course.prereqs.length === 0) return true;
+  // Outer array = OR, inner array = AND
+  return course.prereqs.some((group) =>
+    group.every((prereq) => prereqSatisfiedSet.has(prereq.toUpperCase()))
+  );
+});
+```
+
+- **Outer `some()`**: At least one group must be satisfied (OR logic)
+- **Inner `every()`**: All courses in a group must be satisfied (AND logic)
+
+<Tip>
+Both completed and in-progress courses count toward prerequisite satisfaction when planning the **next** semester.
+</Tip>
+
+## Implementation Details
+
+- **Files**: 
+  - `server/src/routes/degree-plan.ts` - Degree plan endpoints
+  - `server/src/routes/recommendations.ts` - Prerequisite validation
+  - `server/src/types/index.ts` - Type definitions
+- **Database**: Supabase (PostgreSQL)
+- **Validation**: Zod schema (max 200 completed, 50 in-progress courses)
+- **Performance**: Single query per major, O(n×m) equivalency checking
+
+## Best Practices
+
+<Accordion title="For Academic Advisors">
+  - Define equivalencies comprehensively to avoid manual overrides
+  - Use `credits_map` for all non-3-credit courses
+  - Set `selection_rule: "pick"` for elective categories
+  - Test degree plans with edge cases (transfer students, double majors)
+</Accordion>
+
+<Accordion title="For Students">
+  - Upload transcripts early to populate completed courses
+  - Review equivalency matches to ensure transfer credits applied correctly
+  - Check prerequisite warnings before registering for courses
+  - Monitor progress percentage to stay on track for 4-year graduation
+</Accordion>

@@ -1,0 +1,184 @@
+---
+title: Transcript API
+description: AI-powered transcript parsing to extract course history from PDF transcripts
+---
+
+## Parse Transcript
+
+<div className="api-method">
+  <div className="api-method-badge post">POST</div>
+  <code>/api/transcript/parse</code>
+</div>
+
+Upload an unofficial or official transcript PDF and automatically extract course codes, names, credits, and grades using AI. This endpoint uses Claude (Anthropic) to intelligently parse transcript text and return structured course data.
+
+<Warning>
+  **Authentication required:** This endpoint requires a valid authentication token. Include your session token in the request headers.
+</Warning>
+
+### Request
+
+This is a multipart/form-data request for file upload.
+
+<ParamField body="file" type="file" required>
+  PDF file of your transcript. Must be:
+  - Valid PDF format (validated by PDF magic bytes)
+  - Maximum size: 2MB
+  - MIME type: application/pdf
+</ParamField>
+
+### Response
+
+Returns an array of parsed courses with validated course codes and grades.
+
+<ResponseField name="data" type="object">
+  Parsed transcript data
+  
+  <Expandable title="Properties">
+    <ResponseField name="courses" type="ParsedCourse[]">
+      Array of courses extracted from the transcript
+      
+      <Expandable title="ParsedCourse properties">
+        <ResponseField name="code" type="string">
+          Course code in standard format (e.g., "CSCE 121"). Validated against regex pattern `^[A-Z]{2,5} \d{3}[A-Z]?$`
+        </ResponseField>
+        
+        <ResponseField name="name" type="string">
+          Full course name (maximum 200 characters)
+        </ResponseField>
+        
+        <ResponseField name="credits" type="number">
+          Credit hours (0-6). Validated to ensure reasonable range.
+        </ResponseField>
+        
+        <ResponseField name="grade" type="string">
+          Letter grade. Valid grades: A, B, C, D, F, W (withdrawn), IP (in progress), I (incomplete), S (satisfactory), U (unsatisfactory), Q (dropped), CR (credit), NC (no credit). Invalid grades are replaced with "?".
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="error" type="string | null">
+  Error message if request failed, otherwise null
+</ResponseField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl -X POST "https://api.sift.app/api/transcript/parse" \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -F "file=@/path/to/transcript.pdf"
+```
+
+```javascript JavaScript
+const formData = new FormData();
+formData.append('file', fileInput.files[0]);
+
+const response = await fetch('https://api.sift.app/api/transcript/parse', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer YOUR_AUTH_TOKEN'
+  },
+  body: formData
+});
+const { data, error } = await response.json();
+```
+
+```python Python
+import requests
+
+files = {'file': open('transcript.pdf', 'rb')}
+headers = {'Authorization': 'Bearer YOUR_AUTH_TOKEN'}
+
+response = requests.post(
+    'https://api.sift.app/api/transcript/parse',
+    files=files,
+    headers=headers
+)
+result = response.json()
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "data": {
+    "courses": [
+      {
+        "code": "CSCE 121",
+        "name": "Introduction to Program Design and Concepts",
+        "credits": 4,
+        "grade": "A"
+      },
+      {
+        "code": "MATH 151",
+        "name": "Engineering Mathematics I",
+        "credits": 4,
+        "grade": "B"
+      },
+      {
+        "code": "CSCE 221",
+        "name": "Data Structures and Algorithms",
+        "credits": 4,
+        "grade": "IP"
+      },
+      {
+        "code": "ENGL 104",
+        "name": "Composition and Rhetoric",
+        "credits": 3,
+        "grade": "W"
+      }
+    ]
+  },
+  "error": null
+}
+```
+
+## How It Works
+
+1. **PDF Validation**: The endpoint validates that the uploaded file is a valid PDF by checking the PDF magic bytes (`%PDF`).
+
+2. **Text Extraction**: Uses `pdf-parse` library to extract text from the PDF (up to 50,000 characters to prevent abuse).
+
+3. **AI Parsing**: Sends the extracted text to Claude (Haiku model) with strict instructions to extract course data in JSON format. The prompt is designed to resist prompt injection attacks.
+
+4. **Validation**: The response is validated to ensure:
+   - Course codes match the expected format (e.g., "CSCE 121")
+   - Credits are in valid range (0-6)
+   - Grades are recognized letter grades
+   - All required fields are present
+
+5. **Sanitization**: Output is sanitized (course names truncated to 200 chars, codes normalized to uppercase, invalid grades replaced with "?").
+
+<Note>
+  **Privacy:** Transcript text is sent to Anthropic's API for processing. The endpoint is designed to extract only course information and ignore other personal data. Transcripts are not stored on Sift servers.
+</Note>
+
+<Note>
+  **Dropped/In-Progress courses:** Courses with grades like "W" (withdrawn) or "IP" (in progress) are included in the results. You can filter these client-side if needed.
+</Note>
+
+<Warning>
+  **File size limit:** Maximum file size is 2MB. Most transcripts are under 500KB, so this should be sufficient for typical use cases.
+</Warning>
+
+<Warning>
+  **API Key required:** This endpoint requires the `ANTHROPIC_API_KEY` environment variable to be set on the server. If not configured, you'll receive a 500 error indicating transcript parsing is unavailable.
+</Warning>
+
+## Error Responses
+
+| Status Code | Error Message | Cause |
+|-------------|---------------|-------|
+| 400 | "No file uploaded" | Request missing file |
+| 400 | "File does not appear to be a valid PDF" | Invalid PDF format |
+| 400 | "Only PDF files are accepted" | Wrong MIME type |
+| 400 | "Could not extract text from PDF" | PDF is encrypted, image-only, or corrupted |
+| 401 | Unauthorized | Missing or invalid authentication token |
+| 413 | Payload too large | File exceeds 2MB limit |
+| 500 | "Transcript parsing is currently unavailable" | Server missing Anthropic API key |
+| 500 | "Failed to parse transcript data" | AI response was invalid JSON |
+| 500 | "Failed to parse transcript" | Other server error |

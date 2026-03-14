@@ -1,0 +1,163 @@
+---
+title: "Uploading Transcripts"
+description: "Learn how to upload your academic transcript to Sift and automatically extract your completed courses"
+---
+
+## Overview
+
+Sift automatically extracts course information from your academic transcript PDF using AI-powered parsing. This guide walks you through uploading your transcript and troubleshooting common issues.
+
+<Note>
+Sift accepts only PDF files up to 2MB in size. Most university transcripts are under 500KB and will upload without issues.
+</Note>
+
+## Uploading Your Transcript
+
+<Steps>
+  <Step title="Prepare your transcript PDF">
+    Download an official or unofficial transcript from your university's student portal. Ensure the file is in PDF format.
+  </Step>
+
+  <Step title="Upload the file">
+    Navigate to your Sift dashboard and click the "Upload Transcript" button. Select your PDF file when prompted.
+  </Step>
+
+  <Step title="Wait for parsing">
+    Sift uses Claude AI to extract course information from your transcript. This typically takes 5-15 seconds depending on transcript length.
+  </Step>
+
+  <Step title="Review extracted courses">
+    After parsing completes, review the list of extracted courses. Each course will include:
+    - **Course code** (e.g., "CSCE 121")
+    - **Course name** (e.g., "Introduction to Program Design and Concepts")
+    - **Credit hours** (0-6 credits)
+    - **Letter grade** (A, B, C, D, F, W, IP, etc.)
+  </Step>
+</Steps>
+
+## Accepted File Types
+
+Sift only accepts **PDF files** with the following requirements:
+
+- **File format:** PDF (`.pdf` extension)
+- **File size:** Maximum 2MB
+- **MIME type:** `application/pdf`
+- **Content:** Must contain readable text (not scanned images without OCR)
+
+<Warning>
+Files must be valid PDFs starting with the PDF magic bytes (`%PDF`). Renamed files or corrupted PDFs will be rejected with an error message.
+</Warning>
+
+## How Course Extraction Works
+
+Sift uses a multi-step process to extract courses from your transcript:
+
+1. **PDF Validation:** The file is checked for valid PDF structure and size limits
+2. **Text Extraction:** Text content is extracted from the PDF (up to 50,000 characters)
+3. **AI Parsing:** Claude Haiku analyzes the text and identifies course records
+4. **Validation:** Extracted courses are validated against expected formats:
+   - Course codes must match pattern: 2-5 uppercase letters + space + 3 digits (e.g., `CSCE 121`, `MATH 151A`)
+   - Credits must be between 0 and 6
+   - Grades must be valid: A, B, C, D, F, W, IP, I, S, U, Q, CR, NC
+5. **Sanitization:** Course names are trimmed to 200 characters and normalized
+
+<Tip>
+Courses with grades like "W" (withdrawn) or "IP" (in progress) are still extracted and stored. This helps Sift understand your full academic history.
+</Tip>
+
+## Valid Course Codes
+
+Sift recognizes course codes that follow this pattern:
+
+- 2-5 uppercase letters for the department (e.g., `CSCE`, `MATH`, `ENGL`)
+- A space
+- 3 digits for the course number (e.g., `121`, `151`, `304`)
+- An optional letter suffix (e.g., `151A`, `304H`)
+
+**Valid examples:**
+- `CSCE 121`
+- `MATH 151A`
+- `ENGL 104`
+- `PSYCH 107`
+
+**Invalid examples:**
+- `CS121` (missing space)
+- `CSCE-121` (hyphen instead of space)
+- `CSCE 1210` (too many digits)
+
+## Valid Grades
+
+The following letter grades are recognized:
+
+| Grade | Meaning |
+|-------|----------|
+| A, B, C, D, F | Standard letter grades |
+| W | Withdrawn |
+| IP | In Progress |
+| I | Incomplete |
+| S / U | Satisfactory / Unsatisfactory |
+| Q | Dropped |
+| CR / NC | Credit / No Credit |
+
+<Note>
+If a grade doesn't match the expected values, it will be recorded as `?` (unknown).
+</Note>
+
+## Troubleshooting
+
+<Accordion title="Error: 'Only PDF files are accepted'">
+  Make sure your file has a `.pdf` extension and is genuinely a PDF file. Simply renaming a `.docx` or `.jpg` file to `.pdf` will not work.
+</Accordion>
+
+<Accordion title="Error: 'File does not appear to be a valid PDF'">
+  The uploaded file failed PDF validation. This happens when:
+  - The file is corrupted
+  - The file was renamed from another format
+  - The file doesn't start with the PDF magic bytes
+  
+  Try downloading your transcript again from your university portal.
+</Accordion>
+
+<Accordion title="Error: 'Could not extract text from PDF'">
+  The PDF uploaded successfully, but Sift couldn't extract readable text. This usually means:
+  - Your transcript is a scanned image without OCR (Optical Character Recognition)
+  - The PDF is encrypted or password-protected
+  - The PDF contains less than 20 characters of text
+  
+  Try requesting a text-based transcript from your university or use an OCR tool to convert scanned transcripts.
+</Accordion>
+
+<Accordion title="Error: 'Failed to parse transcript data'">
+  The text was extracted, but the AI couldn't identify course records in the expected format. This may happen if:
+  - Your transcript uses a non-standard format
+  - The document is not actually a transcript
+  - The transcript is in a language other than English
+  
+  Contact support and we can help manually parse your transcript.
+</Accordion>
+
+<Accordion title="Some courses are missing after upload">
+  Sift applies strict validation rules during extraction. Courses may be filtered out if:
+  - The course code doesn't match the expected pattern
+  - Credits are listed as negative or greater than 6
+  - The grade is not in the recognized list
+  
+  You can manually add missing courses through the course management interface.
+</Accordion>
+
+<Accordion title="Course names are truncated">
+  Course names longer than 200 characters are automatically truncated to prevent display issues. The full name is typically not needed for course identification.
+</Accordion>
+
+## What Happens Next
+
+Once your transcript is successfully parsed:
+
+1. **Courses are saved** to your user profile as completed courses
+2. **Degree requirements** are automatically calculated based on your completed courses
+3. **Recommendations** are generated based on remaining requirements and your preferences
+4. You can **customize your preferences** to adjust how courses are scored and ranked
+
+<Tip>
+After uploading your transcript, head to the [Customizing Preferences](/guides/customizing-preferences) guide to personalize your course recommendations.
+</Tip>
