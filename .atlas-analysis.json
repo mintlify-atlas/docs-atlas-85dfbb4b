@@ -1,0 +1,87 @@
+{
+  "projectType": "saas",
+  "projectName": "Sift",
+  "projectDescription": "AI-powered course planning platform for CS students that combines grade distributions, professor ratings, and transcript analysis to generate personalized course recommendations.",
+  "theme": "almond",
+  "primaryColor": "#39be82",
+  "lightColor": "#327c5c",
+  "darkColor": "#1b1c1c",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "setup"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/recommendations",
+              "features/transcript-parsing",
+              "features/degree-tracking",
+              "features/professor-ratings"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/uploading-transcripts",
+              "guides/customizing-preferences",
+              "guides/understanding-scores"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/introduction",
+              "api/authentication"
+            ]
+          },
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api/courses",
+              "api/recommendations",
+              "api/professors",
+              "api/degree-plan",
+              "api/transcript",
+              "api/user"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "AI-powered course recommendations",
+    "Automated transcript parsing with Claude",
+    "Multi-factor scoring algorithm",
+    "Grade distribution analysis",
+    "Professor ratings integration",
+    "Degree progress tracking",
+    "Prerequisite chain validation",
+    "Schedule optimization"
+  ],
+  "publicApiSurface": [
+    "GET /api/courses",
+    "GET /api/courses/:id",
+    "POST /api/recommendations",
+    "GET /api/professors",
+    "GET /api/professors/:id",
+    "GET /api/degree-plan/:major",
+    "POST /api/transcript/parse",
+    "GET /api/user/profile",
+    "PUT /api/user/profile"
+  ]
+}
